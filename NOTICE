@@ -1,0 +1,12 @@
+Lab Stocks
+Copyright (C) 2026 Gardiner Lab, Utrecht University
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 3 or (at your option) any later version. See LICENSE.
+
+It includes, unchanged, in app/static/vendor:
+
+qrcode-generator 1.4.4 (label QR codes)
+    https://github.com/kazuhikoarase/qrcode-generator  Copyright (c) 2009 Kazuhiko Arase
+    MIT licence: see the header of app/static/vendor/qrcode.js

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>About · Lab Stocks</title>
+    <link rel="stylesheet" href="{{ request.script_root }}/static/css/stocks.css?v={{ version }}">
+</head>
+<body>
+<header class="topbar">
+    <a class="topbar-back" href="{{ request.script_root }}/">← Lab Stocks</a>
+    <span class="topbar-title">🧫 Lab Stocks</span>
+</header>
+<main class="about">
+    <h1>Lab Stocks {{ version }}</h1>
+    <p>The Gardiner Lab suite's glycerol stocks and primers.</p>
+    <ul>
+        <li><b>Glycerol stocks</b>, numbered per lab (GL-G-0042) and linked to the plasmid they hold. Confirming
+            a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here.</li>
+        <li><b>Primers</b> (GL-O-0007) with their sequence, length, GC and Tm, and where the tube is. Primers
+            designed in the Plasmid Editor can be saved here, and the editor shows which bind a plasmid.</li>
+        <li>Storage, labels with QR codes, photos and files, and links from the Lab Notebook.</li>
+    </ul>
+    <p>A lab's stocks are shared within the lab and not seen by other labs.</p>
+    <h2>Licence</h2>
+    <p>Free software under the GNU General Public License v3.0. Labels use
+       <a href="https://github.com/kazuhikoarase/qrcode-generator" rel="noopener">qrcode-generator</a> (MIT; see NOTICE).</p>
+</main>
+</body>
+</html>

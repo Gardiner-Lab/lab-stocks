@@ -5,6 +5,17 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-16
+
+### Added
+- **A glycerol stock's plasmid, one click away.** 🧬 Open in the Plasmid Editor, at the top of a
+  stock, opens the plasmid it holds.
+- **Linking a stock to its plasmid afterwards**: 🔗 Link a plasmid… on a stock not linked to one
+  (made with only a plasmid's name), and 🔗 Change plasmid… to link it to another, from the editor's
+  library. The stock takes the plasmid's name there, and the change is in its history.
+- A stock says so when its plasmid cannot be opened: no longer in the editor's library, or in
+  someone's own plasmids, not shared, instead of a link that goes nowhere.
+
 ## [0.1.1] - 2026-10-16
 
 ### Fixed

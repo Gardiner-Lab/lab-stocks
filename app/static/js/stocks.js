@@ -358,10 +358,26 @@ const App = {
     ];
   },
 
-  async newGlycerol() {
-    const plasmid = await picker({ title: 'Which plasmid is in it?', placeholder: 'Search the Plasmid Editor\'s library',
+  /** Choose a plasmid from the Plasmid Editor's library (the ones this person may open). */
+  pickPlasmid(title = 'Which plasmid is in it?') {
+    return picker({ title, placeholder: 'Search the Plasmid Editor\'s library',
       search: async (q) => (await api('GET', `/plasmids?q=${encodeURIComponent(q)}`)).plasmids,
       describe: (p) => [el('b', { text: p.name }), el('span', { class: 'hint' }, ` · ${p.length.toLocaleString()} bp${p.owner ? ` · ${p.owner}` : ''}${p.confirmed ? ' · ✓ sequenced' : ''}`)] });
+  },
+
+  /** Link a glycerol stock to the plasmid it holds, or to another one. */
+  async linkPlasmid(rec) {
+    const plasmid = await this.pickPlasmid(rec.plasmid_id ? `Which plasmid is in ${rec.code}?` : `Link ${rec.code} to its plasmid`);
+    if (!plasmid) return;
+    try {
+      await api('PUT', `/glycerol/${rec.code}`, { plasmid_id: plasmid.id });
+      toast(`${rec.code} is linked to ${plasmid.name}`, 'success');
+      this.reload();
+    } catch (err) { toast(err.message, 'error', 6000); }
+  },
+
+  async newGlycerol() {
+    const plasmid = await this.pickPlasmid();
     if (!plasmid) return;
     formModal({
       title: `Glycerol stock of ${plasmid.name}`,
@@ -376,16 +392,31 @@ const App = {
   },
 
   glycerolView(rec) {
+    const linked = rec.plasmid || { state: rec.plasmid_id ? 'open' : 'unlinked' };
+    const open = linked.state === 'open';
+    // The plasmid it holds: a link to it in the editor, or why there is none.
+    const plasmidFact = open
+      ? el('a', { href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener', title: 'Open in the Plasmid Editor' }, `🧬 ${linked.name || rec.plasmid_name}`)
+      : el('span', {}, rec.plasmid_name || '—', ' ', el('span', { class: 'hint warn-text' }, {
+        unlinked: '(not linked to a plasmid in the editor)',
+        missing: '(no longer in the Plasmid Editor\'s library)',
+        private: `(in ${linked.owner || 'someone'}'s own plasmids, not shared)`,
+      }[linked.state] || ''));
     return el('div', {},
-      this.head(rec, rec.plasmid_name + (rec.clone ? ` clone ${rec.clone}` : ''),
+      this.head(rec, (linked.name || rec.plasmid_name) + (rec.clone ? ` clone ${rec.clone}` : ''),
         [rec.status, rec.host, rec.location && `kept in ${rec.location}`].filter(Boolean).join(' · '), [
+          open ? el('a', { class: 'btn btn-primary', href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener',
+            title: 'Open the plasmid in this stock in the Plasmid Editor' }, '🧬 Open in the Plasmid Editor') : null,
+          el('button', { class: `btn ${open ? 'btn-secondary' : 'btn-primary'}`, onclick: () => this.linkPlasmid(rec),
+            title: open ? 'Link this stock to another plasmid of the editor\'s library' : 'Link this stock to its plasmid in the editor\'s library' },
+          open ? '🔗 Change plasmid…' : '🔗 Link a plasmid…'),
           el('button', { class: 'btn btn-secondary', onclick: () => formModal({
             title: `Edit ${rec.code}`, fields: this.glycerolFields(rec),
             submit: async (v) => { await api('PUT', `/glycerol/${rec.code}`, v); this.reload(); },
           }) }, '✎ Edit')]),
       this.facts([
-        ['Plasmid', rec.plasmid_id ? el('a', { href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener', title: 'Open in the Plasmid Editor' }, `🧬 ${rec.plasmid_name}`) : rec.plasmid_name],
-        ['Sequencing', rec.plasmid_id ? el('a', { href: `${ST.editor}/sequencing?sequence=${encodeURIComponent(rec.plasmid_id)}`, target: '_blank', rel: 'noopener' },
+        ['Plasmid', plasmidFact],
+        ['Sequencing', open ? el('a', { href: `${ST.editor}/sequencing?sequence=${encodeURIComponent(rec.plasmid_id)}`, target: '_blank', rel: 'noopener' },
           rec.source === 'sequencing' ? '✓ confirmed by sequencing: see the reads' : 'see the reads') : null],
         ['Clone', rec.clone], ['Strain', rec.host], ['Selection', rec.selection], ['Kept in', rec.location],
         ['Made on', rec.made_on], ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),

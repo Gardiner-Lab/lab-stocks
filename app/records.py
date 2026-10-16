@@ -180,6 +180,10 @@ def detail(person: Person, kind: str, ident: str) -> dict:
         out['changes'] = [dict(r) for r in conn.execute(
             'SELECT changed_by, changed_at, what FROM changes WHERE record_kind = ? AND record_id = ? '
             'ORDER BY rowid DESC LIMIT 200', (kind, row['id']))]
+        if kind == 'glycerol':
+            from app import sources
+            # Whether the plasmid it holds can be opened in the editor, and its name there now.
+            out['plasmid'] = sources.plasmid(person, row['plasmid_id']) if row['plasmid_id'] else {'state': 'unlinked'}
         if kind == 'glycerol' and row['plasmid_id']:
             out['same_plasmid'] = [{'code': r['code'], 'clone': r['clone'], 'status': r['status']} for r in conn.execute(
                 'SELECT * FROM glycerol WHERE plasmid_id = ? AND id != ? AND deleted_at IS NULL ORDER BY created_at',
@@ -284,6 +288,15 @@ def create(person: Person, kind: str, data: dict) -> str:
 
 def update(person: Person, kind: str, ident: str, data: dict) -> None:
     fields = (_glycerol_fields if kind == 'glycerol' else _primer_fields)(data, partial=True)
+    if kind == 'glycerol' and fields.get('plasmid_id'):
+        # Linked to a plasmid of the editor's library: one this person may open, named as it is there.
+        from app import sources
+        found = sources.plasmid(person, fields['plasmid_id'])
+        if found['state'] != 'open':
+            raise ValueError("That plasmid is not in the Plasmid Editor's library, or is not one you may open")
+        fields['plasmid_id'], fields['plasmid_name'] = found['id'], found['name']
+    elif kind == 'glycerol' and 'plasmid_id' in fields:
+        fields.pop('plasmid_id')            # a link is changed, not taken away
     with connect() as conn:
         row = visible(conn, person, kind, ident)
         changes = [f'{k}: {row[k]!r} → {v!r}' for k, v in fields.items() if row[k] != v]

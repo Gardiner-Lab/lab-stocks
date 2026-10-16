@@ -46,6 +46,23 @@ def plasmids(person: Person, query: str = '', limit: int = 25) -> List[dict]:
     return found
 
 
+def plasmid(person: Person, plasmid_id: str) -> dict:
+    """
+    A plasmid in the editor's library, as a stock links to it: {'state': 'open'}
+    with its id and name when this person may open it, 'private' when it is
+    someone's own (not shared), 'missing' when it is not in the library.
+    """
+    rows = _read(os.environ.get('EDITOR_DATABASE_PATH', '/editor/plasmid_editor.db'),
+                 'SELECT s.id, s.name, s.shared, u.username AS owner FROM sequences s '
+                 'LEFT JOIN users u ON u.id = s.owner_id WHERE s.id = ?', (plasmid_id or '',))
+    if not rows:
+        return {'state': 'missing'}
+    r = rows[0]
+    if r['shared'] or person.oversees(r['owner']):
+        return {'state': 'open', 'id': r['id'], 'name': r['name']}
+    return {'state': 'private', 'owner': r['owner']}
+
+
 def notebook_mentions(person: Person, code: str) -> List[dict]:
     """Notebook pages that link to this record, which this person may open."""
     rows = _read(os.environ.get('NOTEBOOK_DATABASE_PATH', '/notebook/notebook.db'),

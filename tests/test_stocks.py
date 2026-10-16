@@ -113,3 +113,30 @@ def test_files_mentions_and_search_for_links(as_user, world):
     assert found[0] == {'kind': 'glycerol', 'code': g['code'], 'label': f"{g['code']} pGFP clone 2"}
     assert ana.delete(f"/api/glycerol/{g['code']}").status_code == 200
     assert ana.get(f"/api/glycerol/{g['code']}").status_code == 404
+
+
+def test_a_glycerol_stock_is_linked_to_its_plasmid_and_says_when_it_cannot_be_opened(as_user, world):
+    import sqlite3
+    ana, ben = as_user('ana'), as_user('ben')
+    # A stock made with only the plasmid's name: not linked yet.
+    made = ana.post('/api/glycerol', json={'plasmid_name': 'pOld from the freezer list', 'clone': '2'}).get_json()['record']
+    assert made['plasmid'] == {'state': 'unlinked'}
+    # Linked to the editor's plasmid, it takes the name the plasmid has there.
+    assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'p1'}).status_code == 200
+    rec = ana.get(f"/api/glycerol/{made['code']}").get_json()['record']
+    assert (rec['plasmid_id'], rec['plasmid_name']) == ('p1', 'pGreen-35S-GFP')
+    assert rec['plasmid'] == {'state': 'open', 'id': 'p1', 'name': 'pGreen-35S-GFP'}
+    assert any('plasmid_id' in c['what'] for c in rec['changes']), 'the change is logged'
+    # Only to plasmids this person may open, and ones that exist; an empty link changes nothing.
+    assert ben.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'p2'}).status_code == 400
+    assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'nothing-like-it'}).status_code == 400
+    assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': ''}).status_code == 200
+    assert ana.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid_id'] == 'p1'
+    # Linked to ana's own plasmid: the rest of the lab sees the stock, and why the plasmid will not open.
+    assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'p2'}).status_code == 200
+    assert ben.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid'] == {'state': 'private', 'owner': 'ana'}
+    # Gone from the editor's library: said so, rather than a link that goes nowhere.
+    conn = sqlite3.connect(world['paths']['editor'])
+    conn.execute("DELETE FROM sequences WHERE id = 'p2'")
+    conn.commit()
+    assert ana.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid'] == {'state': 'missing'}

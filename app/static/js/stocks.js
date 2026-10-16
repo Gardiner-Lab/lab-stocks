@@ -49,6 +49,29 @@ async function api(method, path, body, form) {
   return data;
 }
 
+/**
+ * Copy text to the clipboard; resolves true when it was copied. Browsers give
+ * pages the clipboard API only over https (or on localhost), so elsewhere, a
+ * suite reached over plain http say, it copies a selected text field with the
+ * copy command instead, which still works while handling a click.
+ */
+async function copyText(text) {
+  if (window.isSecureContext && navigator.clipboard) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* refused: try the other way */ }
+  }
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  document.body.append(field);
+  field.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+  field.remove();
+  return copied;
+}
+
 function toast(message, kind = 'info', ms = 3500) {
   const box = el('div', { class: `toast toast-${kind}` }, message);
   document.getElementById('toasts').append(box);
@@ -421,7 +444,10 @@ const App = {
         el('button', { class: 'btn btn-secondary', onclick: () => this.editPrimer(rec) }, '✎ Edit')]),
       el('div', { class: 'primer-seq' },
         el('div', {}, el('span', { class: 'hint' }, "5′ "), el('span', { class: 'mono big' }, rec.sequence), el('span', { class: 'hint' }, " 3′"),
-          el('button', { class: 'btn btn-secondary btn-sm', onclick: () => navigator.clipboard.writeText(rec.sequence).then(() => toast('Copied', 'success', 1500)) }, 'Copy')),
+          el('button', { class: 'btn btn-secondary btn-sm', onclick: async () => {
+            if (await copyText(rec.sequence)) toast('Copied', 'success', 1500);
+            else toast('Copying is blocked here: select the sequence and copy it', 'error', 4000);
+          } }, 'Copy')),
         el('div', { class: 'hint' }, 'Reverse complement: ', el('span', { class: 'mono' }, revcomp(rec.sequence)))),
       this.facts([['Length', `${rec.length} nt`], ['GC', `${rec.gc}%`], ['Tm', rec.tm !== null ? `${rec.tm} °C (nearest neighbour, 50 mM Na⁺, 250 nM primer)` : null],
         ['Direction', rec.direction], ['Target', rec.target], ['Purpose', rec.purpose], ['Modifications', rec.modifications],

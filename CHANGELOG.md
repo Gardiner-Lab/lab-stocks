@@ -5,6 +5,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-16
+
+### Fixed
+- **Copy buttons work over plain http.** Browsers allow the clipboard API only on secure pages
+  (https, or localhost); elsewhere a primer's Copy now copies with the copy command instead, and says so
+  when even that is blocked.
+
 ## [0.1.0] - 2026-10-15
 
 The first release.

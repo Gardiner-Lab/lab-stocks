@@ -193,3 +193,14 @@ ul.plain { list-style: none; padding: 0; margin: .3rem 0; }
 /* a chemical's safety data sheet and where to look it up */
 .sds { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
 .safety-links { display: inline-flex; flex-wrap: wrap; gap: .4rem; vertical-align: middle; }
+
+/* A chemical's "out" switch */
+.switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; vertical-align: middle; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch .slider { position: relative; width: 34px; height: 18px; border-radius: 9px; background: var(--border, #ccc); transition: background .15s; flex: none; }
+.switch .slider::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch input:checked + .slider { background: var(--danger, #dc2626); }
+.switch input:checked + .slider::after { transform: translateX(16px); }
+.switch input:focus-visible + .slider { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
+.switch .switch-label { font-size: .9em; }
+.record-head .actions .switch { margin-right: 4px; }

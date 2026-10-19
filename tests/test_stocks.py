@@ -205,13 +205,16 @@ def test_chemicals_with_their_cas_number_and_safety_data_sheet(as_user):
     assert {c['code']: c['has_sds'] for c in _ok(ana.get('/api/chemicals'))['chemicals']} == {'GARD-C-0001': 1, 'GARD-C-0002': 0}
     assert zoe.get(f"/api/attachments/{rec['sds']['id']}").status_code == 404
     # Edited, logged; a code like any other stock's.
-    _ok(ana.put('/api/chemicals/GARD-C-0001', json={'room': 'O.705', 'status': 'used up'}))
+    _ok(ana.put('/api/chemicals/GARD-C-0001', json={'room': 'O.705', 'status': 'out'}))
+    assert ana.put('/api/chemicals/GARD-C-0001', json={'status': 'used up'}).status_code == 400, 'a chemical is out'
+    assert 'out' in _ok(ana.get('/api/me'))['chemical_status']
     assert "room: 'O.703' → 'O.705'" in _ok(ana.get('/api/chemicals/GARD-C-0001'))['record']['changes'][0]['what']
     assert ana.put('/api/chemicals/GARD-C-0001', json={'cas': '1-2-3'}).status_code == 400
     from app import records
     assert records.kind_of('gard-c-0001') == 'chemical'
-    # Not offered to the notebook's links, which know glycerol stocks and primers only.
-    assert all(r['kind'] != 'chemical' for r in _ok(ana.get('/api/search?q=Ethanol'))['results'])
+    # Offered to the notebook's links.
+    assert _ok(ana.get('/api/search?q=Ethanol'))['results'] == [
+        {'kind': 'chemical', 'code': 'GARD-C-0001', 'label': 'GARD-C-0001 Ethanol absolute (CAS 64-17-5)'}]
 
 
 def test_the_page_links_to_the_safety_registers(as_user):

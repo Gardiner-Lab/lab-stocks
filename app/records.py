@@ -26,6 +26,8 @@ NAMES = {'glycerol': 'glycerol stock', 'primer': 'primer', 'chemical': 'chemical
 CAS = re.compile(r'(\d{2,7})-(\d{2})-(\d)')
 SDS = 'SDS'                 # the caption of a chemical's safety data sheet
 STATUS = ('in stock', 'used up', 'discarded')
+# A chemical runs out (and is ordered again), or is got rid of.
+CHEMICAL_STATUS = ('in stock', 'out', 'discarded')
 DIRECTIONS = ('', 'forward', 'reverse')
 LAB_CODE = re.compile(r'[A-Z][A-Z0-9]{0,5}')
 
@@ -264,11 +266,13 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
 
 
 def search(person: Person, q: str, limit: int = 20) -> List[dict]:
-    """Glycerol stocks and primers by code or name, for links from elsewhere (the notebook)."""
+    """Glycerol stocks, primers and chemicals by code or name, for links from elsewhere (the notebook)."""
     q = (q or '').strip()
     found = [dict(kind='glycerol', code=r['code'], label=f"{r['code']} {r['plasmid_name']}"
                   + (f" clone {r['clone']}" if r['clone'] else '')) for r in list_records(person, 'glycerol', q, limit=limit)]
     found += [dict(kind='primer', code=r['code'], label=f"{r['code']} {r['name']}") for r in list_records(person, 'primer', q, limit=limit)]
+    found += [dict(kind='chemical', code=r['code'], label=f"{r['code']} {r['name']}" + (f" (CAS {r['cas']})" if r['cas'] else ''))
+              for r in list_records(person, 'chemical', q, limit=limit)]
     exact = [f for f in found if f['code'].upper() == q.upper()]
     return (exact + [f for f in found if f not in exact])[:limit]
 
@@ -333,8 +337,8 @@ def _chemical_fields(data: dict, partial: bool) -> Dict[str, Any]:
             out[key] = _text(data.get(key), limit)
     if 'status' in data or not partial:
         s = _text(data.get('status')) or 'in stock'
-        if s not in STATUS:
-            raise ValueError(f'status must be one of {", ".join(STATUS)}')
+        if s not in CHEMICAL_STATUS:
+            raise ValueError(f'status must be one of {", ".join(CHEMICAL_STATUS)}')
         out['status'] = s
     return out
 

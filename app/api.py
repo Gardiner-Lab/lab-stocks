@@ -43,7 +43,8 @@ def _kind(collection: str) -> str:
 @signed_in
 def me(person):
     return jsonify({'person': person.to_dict(), 'lab': records.lab_info(person),
-                    'status': records.STATUS, 'directions': records.DIRECTIONS})
+                    'status': records.STATUS, 'chemical_status': records.CHEMICAL_STATUS,
+                    'directions': records.DIRECTIONS})
 
 
 @api.get('/lab')

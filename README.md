@@ -17,6 +17,7 @@ The Gardiner Lab suite's glycerol stocks, primers and chemicals.
 - **Chemicals** are numbered `GL-C-0003`.
   - Each records its name, CAS number (its check digit is checked), the room it is kept in, its size
     and status.
+  - An **Out** switch, in the list and on its page, marks one that has run out.
   - A chemical's page holds its safety data sheet (SDS, a PDF), and links to the university's
     hazardous substances register (SOFOS) and to Chemwatch, with its CAS number ready to copy.
 - **Shared with the other tools:**

@@ -326,14 +326,15 @@ const App = {
     const head = {
       glycerol: ['', 'Code', 'Plasmid', 'Clone', 'Strain', 'Selection', 'Kept in', 'Made', 'Status'],
       primer: ['', 'Code', 'Name', 'Sequence (5′→3′)', 'nt', 'Tm', 'Kept in', 'Status'],
-      chemical: ['', 'Code', 'Name', 'CAS number', 'Room', 'Size', 'SDS', 'Status'],
+      chemical: ['', 'Code', 'Name', 'CAS number', 'Room', 'Size', 'SDS', 'Out'],
     }[kind];
     const cells = {
       glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
         r.source === 'sequencing' ? `${r.status} ✓` : r.status],
       primer: (r) => [r.name, el('span', { class: 'mono' }, r.sequence), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, r.status],
       chemical: (r) => [r.name, el('span', { class: 'mono' }, r.cas), r.room, r.size,
-        r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'), r.status],
+        r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'),
+        r.status === 'discarded' ? 'discarded' : this.outToggle(r)],
     }[kind];
     return el('table', { class: 'data' },
       el('thead', {}, el('tr', {}, head.map((h) => el('th', {}, h)))),
@@ -539,7 +540,7 @@ const App = {
         { name: 'cas', label: 'CAS number', value: rec?.cas, placeholder: 'e.g. 64-17-5', hint: 'The check digit is checked, to catch typing errors.' },
         { name: 'room', label: 'Room', value: rec?.room, placeholder: 'e.g. Kruyt O.703, flammables cabinet' },
         { name: 'size', label: 'Size', value: rec?.size, placeholder: 'e.g. 500 mL, 25 g' },
-        { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' },
+        { name: 'status', label: 'Status', type: 'select', options: this.meta.chemical_status, value: rec?.status || 'in stock' },
         { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
       ],
       submit: async (v) => {
@@ -547,6 +548,21 @@ const App = {
         if (rec) this.reload(); else location.hash = `chemical=${res.record.code}`;
       },
     });
+  },
+
+  /** A switch: the chemical has run out (on), or is in stock (off). In the list it does not open the chemical. */
+  outToggle(rec) {
+    const box = el('input', { type: 'checkbox', checked: rec.status === 'out', onchange: async () => {
+      const status = box.checked ? 'out' : 'in stock';
+      try {
+        await api('PUT', `/chemicals/${rec.code}`, { status });
+        rec.status = status;
+        toast(`${rec.name}: ${status === 'out' ? 'marked as out' : 'back in stock'}`, 'success', 2500);
+        this.reload();
+      } catch (err) { box.checked = !box.checked; toast(`Not changed: ${err.message}`, 'error', 6000); }
+    } });
+    return el('label', { class: 'switch', title: 'Out: it has run out and needs ordering', onclick: (e) => e.stopPropagation() },
+      box, el('span', { class: 'slider' }), el('span', { class: 'switch-label' }, 'Out'));
   },
 
   /** Where to look a chemical up: the university's hazardous substances register (SOFOS), and Chemwatch. */
@@ -568,6 +584,7 @@ const App = {
       onchange: (e) => { if (e.target.files.length) this.upload(rec, [e.target.files[0]], SDS); } });
     return el('div', {},
       this.head(rec, rec.name, [rec.cas && `CAS ${rec.cas}`, rec.size, rec.room && `in ${rec.room}`, rec.status].filter(Boolean).join(' · '), [
+        rec.status === 'discarded' ? null : this.outToggle(rec),
         el('button', { class: 'btn btn-secondary', onclick: () => this.editChemical(rec) }, '✎ Edit')]),
       this.facts([['Name', rec.name], ['CAS number', rec.cas ? el('span', {}, el('span', { class: 'mono' }, rec.cas), ' ', copyCas) : null],
         ['Room', rec.room], ['Size', rec.size], ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),

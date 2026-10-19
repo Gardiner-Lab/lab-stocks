@@ -5,6 +5,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-19
+
 ### Added
 - **Chemicals**, a third list beside glycerol stocks and primers: name, CAS number (its check digit
   is checked), room, size, status and notes, numbered like the others (`GL-C-0003`) and on labels.

@@ -5,8 +5,8 @@
  */
 
 const SB = window.ST;
-const KIND = { G: 'glycerol', O: 'primer', C: 'chemical' };
-const PATH = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals' };
+const KIND = { G: 'glycerol', O: 'primer', C: 'chemical', A: 'antibody' };
+const PATH = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies' };
 // GL-G-0001, GL-O-0001: the letter before the number says what it is.
 const kindOf = (code) => KIND[code.split('-').slice(-2, -1)[0]];
 
@@ -41,6 +41,8 @@ function label(rec) {
       [rec.made_on, rec.location].filter(Boolean).join(' · ')],
     primer: () => [rec.name, rec.sequence, [`${rec.length} nt`, rec.tm !== null ? `Tm ${rec.tm} °C` : '', rec.location].filter(Boolean).join(' · ')],
     chemical: () => [rec.name, rec.cas ? `CAS ${rec.cas}` : '', [rec.size, rec.room].filter(Boolean).join(' · ')],
+    antibody: () => [[rec.short_code, rec.type].filter(Boolean).join(' · '), rec.description,
+      [rec.host && `raised in ${rec.host}`, rec.producer, rec.product_number].filter(Boolean).join(' · ')],
   }[rec.kind]();
   return el('div', { class: `label label-${rec.kind}` }, qr(target),
     el('div', { class: 'label-text' }, el('div', { class: 'label-code' }, rec.code),

@@ -13,6 +13,9 @@ and the project uses [semantic versioning](https://semver.org/).
   changed with `SOFOS_URL` and `CHEMWATCH_URL`.
   An **Out** switch, in the list and on its page, marks a chemical that has run out (it is greyed
   in the list) and back in stock. Chemicals can be linked from the Lab Notebook, like other stocks.
+- **Antibodies**, a fourth list (`GL-A-0005`): the short code the lab calls it, a description,
+  primary, secondary or other, producer, source animal, product number and notes about the use,
+  with status, photos and files, labels and links from the Lab Notebook.
 
 ## [0.2.0] - 2026-10-19
 

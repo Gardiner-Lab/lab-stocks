@@ -1,5 +1,5 @@
 """
-Lab Stocks: the Gardiner Lab suite's glycerol stocks, primers and chemicals.
+Lab Stocks: the Gardiner Lab suite's glycerol stocks, primers, chemicals and antibodies.
 
 Glycerol stocks, numbered per lab and linked to the plasmid they hold (made
 when a plasmid is confirmed by sequencing in the Plasmid Editor); primers with

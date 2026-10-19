@@ -8,7 +8,7 @@ from flask import Blueprint, Response, jsonify, request
 from app import attachments, oligo, people, records, sources
 
 api = Blueprint('api', __name__)
-PLURAL = {'glycerol': 'glycerol', 'primers': 'primer', 'chemicals': 'chemical'}
+PLURAL = {'glycerol': 'glycerol', 'primers': 'primer', 'chemicals': 'chemical', 'antibodies': 'antibody'}
 
 
 def signed_in(view):
@@ -44,6 +44,7 @@ def _kind(collection: str) -> str:
 def me(person):
     return jsonify({'person': person.to_dict(), 'lab': records.lab_info(person),
                     'status': records.STATUS, 'chemical_status': records.CHEMICAL_STATUS,
+                    'antibody_types': records.ANTIBODY_TYPES,
                     'directions': records.DIRECTIONS})
 
 

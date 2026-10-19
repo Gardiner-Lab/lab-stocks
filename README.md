@@ -1,6 +1,6 @@
 # Lab Stocks
 
-The Gardiner Lab suite's glycerol stocks, primers and chemicals.
+The Gardiner Lab suite's glycerol stocks, primers, chemicals and antibodies.
 
 - **Glycerol stocks** are numbered per lab: `GL-G-0042`.
   - Each is linked to the plasmid it holds in the Plasmid Editor's library, and records the clone,
@@ -20,6 +20,9 @@ The Gardiner Lab suite's glycerol stocks, primers and chemicals.
   - An **Out** switch, in the list and on its page, marks one that has run out.
   - A chemical's page holds its safety data sheet (SDS, a PDF), and links to the university's
     hazardous substances register (SOFOS) and to Chemwatch, with its CAS number ready to copy.
+- **Antibodies** are numbered `GL-A-0005`.
+  - Each records the short code the lab calls it, a description, whether it is primary, secondary
+    or other, its producer, the animal it is raised in, its product number, and notes about using it.
 - **Shared with the other tools:**
   - storage, labels with QR codes, photos and files;
   - links from the Lab Notebook (`@`), with the pages that mention each stock.

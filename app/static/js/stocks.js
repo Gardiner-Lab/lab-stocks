@@ -1,8 +1,9 @@
 'use strict';
 /*
- * The Lab Stocks page: glycerol stocks, primers and chemicals, a list of each and
- * a page for each record. Addresses: #glycerol, #primers, #chemicals,
- * #glycerol=GL-G-0001, #primer=GL-O-0001, #chemical=GL-C-0001.
+ * The Lab Stocks page: glycerol stocks, primers, chemicals and antibodies, a list
+ * of each and a page for each record. Addresses: #glycerol, #primers, #chemicals,
+ * #antibodies, #glycerol=GL-G-0001, #primer=GL-O-0001, #chemical=GL-C-0001,
+ * #antibody=GL-A-0001.
  */
 
 const ST = window.ST;
@@ -198,11 +199,12 @@ function localTime(stamp) {
 
 
 const today = () => new Date().toISOString().slice(0, 10);
-const ICON = { glycerol: '🧫', primer: '🧬', chemical: '⚗️' };
-const NAME = { glycerol: 'glycerol stock', primer: 'primer', chemical: 'chemical' };
-const PLURAL = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals' };
-const SINGULAR = { glycerol: 'glycerol', primers: 'primer', chemicals: 'chemical' };
-const TITLE = { glycerol: '🧫 Glycerol stocks', primer: '🧬 Primers', chemical: '⚗️ Chemicals' };
+const ICON = { glycerol: '🧫', primer: '🧬', chemical: '⚗️', antibody: '🔬' };
+const NAME = { glycerol: 'glycerol stock', primer: 'primer', chemical: 'chemical', antibody: 'antibody' };
+const NAMES = { glycerol: 'glycerol stocks', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies' };
+const PLURAL = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies' };
+const SINGULAR = { glycerol: 'glycerol', primers: 'primer', chemicals: 'chemical', antibodies: 'antibody' };
+const TITLE = { glycerol: '🧫 Glycerol stocks', primer: '🧬 Primers', chemical: '⚗️ Chemicals', antibody: '🔬 Antibodies' };
 const SDS = 'SDS';
 const FILE_ICONS = { pdf: '📕', word: '📝', powerpoint: '📽️', excel: '📊', archive: '🗜️', sequence: '🧬', text: '📄', image: '🖼️', file: '📎' };
 const fileUrl = (id, download = false) => url(`/api/attachments/${encodeURIComponent(id)}${download ? '?download' : ''}`);
@@ -256,7 +258,7 @@ const App = {
 
   route() {
     const hash = location.hash.slice(1) || 'glycerol';
-    const record = hash.match(/^(glycerol|primer|chemical)=(.+)$/);
+    const record = hash.match(/^(glycerol|primer|chemical|antibody)=(.+)$/);
     for (const tab of document.querySelectorAll('.view-tab')) {
       tab.classList.toggle('active', tab.dataset.view === (record ? PLURAL[record[1]] : hash));
     }
@@ -270,7 +272,7 @@ const App = {
     const lab = this.meta.lab;
     return el('p', { class: 'lab-code-line' },
       'Codes in ', el('b', {}, lab.lab.startsWith('user:') ? 'your own stocks' : lab.lab), ' start with ',
-      el('span', { class: 'code-badge' }, `${lab.code}-`), ` (${lab.code}-G glycerol stocks, ${lab.code}-O primers, ${lab.code}-C chemicals)`,
+      el('span', { class: 'code-badge' }, `${lab.code}-`), ` (${lab.code}-G glycerol stocks, ${lab.code}-O primers, ${lab.code}-C chemicals, ${lab.code}-A antibodies)`,
       lab.can_change ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.6rem', onclick: () => formModal({
         title: 'Choose the lab code',
         intro: 'Every code your lab makes starts with it. Keep it the same as in the Seed Bank. It can be chosen until the lab\'s first stock; after that it is fixed, as codes on labels never change.',
@@ -286,6 +288,7 @@ const App = {
         glycerol: 'Search by code, plasmid, clone, strain, selection or place',
         primer: 'Search by code, name, target, place, or a piece of the sequence (e.g. GGCCAGT)',
         chemical: 'Search by code, name, CAS number, room or size',
+        antibody: 'Search by code, short code, description, producer, animal, product number or notes',
       }[kind] });
     const table = el('div', { class: 'list' });
     const labelBtn = el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([...this.selected]) }, '🏷 Labels for selected');
@@ -301,13 +304,14 @@ const App = {
       el('div', { class: 'page-head' }, el('h1', {}, TITLE[kind]),
         el('span', { class: 'actions' },
           el('button', { class: 'btn btn-primary', onclick: () => ({ glycerol: () => this.newGlycerol(), primer: () => this.editPrimer(),
-            chemical: () => this.editChemical() })[kind]() },
-          { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical' }[kind]), labelBtn)),
+            chemical: () => this.editChemical(), antibody: () => this.editAntibody() })[kind]() },
+          { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical', antibody: '＋ Antibody' }[kind]), labelBtn)),
       this.labCodeLine(),
       el('p', { class: 'hint' }, {
         glycerol: 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the next number.',
         primer: 'The lab\'s oligos, with where each tube is. Primers designed in the Plasmid Editor can be saved here, and the editor shows which of them bind a plasmid.',
         chemical: 'The lab\'s chemicals, with the room each is kept in. Open one to add its safety data sheet (SDS).',
+        antibody: 'The lab\'s antibodies: primary and secondary, who makes each, the animal it is raised in, and how to use it.',
       }[kind], kind === 'chemical' ? this.safetyLinks() : null),
       query, table);
     await draw();
@@ -327,6 +331,7 @@ const App = {
       glycerol: ['', 'Code', 'Plasmid', 'Clone', 'Strain', 'Selection', 'Kept in', 'Made', 'Status'],
       primer: ['', 'Code', 'Name', 'Sequence (5′→3′)', 'nt', 'Tm', 'Kept in', 'Status'],
       chemical: ['', 'Code', 'Name', 'CAS number', 'Room', 'Size', 'SDS', 'Out'],
+      antibody: ['', 'Code', 'Short code', 'Description', 'Type', 'Producer', 'Source animal', 'Product number', 'Notes about the use', 'Status'],
     }[kind];
     const cells = {
       glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
@@ -335,6 +340,8 @@ const App = {
       chemical: (r) => [r.name, el('span', { class: 'mono' }, r.cas), r.room, r.size,
         r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'),
         r.status === 'discarded' ? 'discarded' : this.outToggle(r)],
+      antibody: (r) => [el('b', {}, r.short_code), r.description, r.type, r.producer, r.host, el('span', { class: 'mono' }, r.product_number),
+        el('span', { class: 'clip', title: r.notes }, r.notes), r.status],
     }[kind];
     return el('table', { class: 'data' },
       el('thead', {}, el('tr', {}, head.map((h) => el('th', {}, h)))),
@@ -359,7 +366,8 @@ const App = {
       return;
     }
     this.rec = rec;
-    put(main, { glycerol: () => this.glycerolView(rec), primer: () => this.primerView(rec), chemical: () => this.chemicalView(rec) }[kind](),
+    put(main, { glycerol: () => this.glycerolView(rec), primer: () => this.primerView(rec), chemical: () => this.chemicalView(rec),
+      antibody: () => this.antibodyView(rec) }[kind](),
       this.files(rec), this.mentions(rec), this.history(rec));
   },
 
@@ -367,7 +375,7 @@ const App = {
 
   head(rec, title, subtitle, actions) {
     return el('div', { class: 'record-head' },
-      el('div', {}, el('div', { class: 'crumbs' }, el('a', { href: `#${PLURAL[rec.kind]}` }, `${ICON[rec.kind]} All ${NAME[rec.kind]}s`)),
+      el('div', {}, el('div', { class: 'crumbs' }, el('a', { href: `#${PLURAL[rec.kind]}` }, `${ICON[rec.kind]} All ${NAMES[rec.kind]}`)),
         el('h1', {}, el('span', { class: 'code-badge' }, rec.code), ' ', title),
         subtitle ? el('div', { class: 'hint' }, subtitle) : null),
       el('span', { class: 'actions' }, actions,
@@ -599,6 +607,42 @@ const App = {
             : el('span', { class: 'hint' }, 'No safety data sheet yet. '),
           el('label', { class: `btn ${sds ? 'btn-secondary' : 'btn-primary'} btn-sm` }, sds ? 'Replace the SDS…' : '📕 Add the SDS (PDF)…', sdsInput)),
         el('p', { class: 'hint' }, rec.cas ? `Look it up by its CAS number, ${rec.cas}:` : 'Look it up:', ' ', this.safetyLinks(rec.cas))));
+  },
+
+  /* antibodies --------------------------------------------------------------------- */
+
+  editAntibody(rec) {
+    formModal({
+      title: rec ? `Edit ${rec.code}` : 'New antibody',
+      fields: [
+        { name: 'short_code', label: 'Short code in lab', value: rec?.short_code, placeholder: 'e.g. αGFP-m, αRb-HRP' },
+        { name: 'description', label: 'Description', value: rec?.description, placeholder: 'e.g. Anti-GFP, monoclonal (clone B-2)' },
+        { name: 'type', label: 'Primary / secondary / other', type: 'select', value: rec?.type || 'primary',
+          options: this.meta.antibody_types.map((t) => [t, t[0].toUpperCase() + t.slice(1)]) },
+        { name: 'producer', label: 'Producer', value: rec?.producer, placeholder: 'e.g. Santa Cruz, Abcam, Agrisera' },
+        { name: 'host', label: 'Source animal', value: rec?.host, placeholder: 'e.g. mouse, rabbit, goat' },
+        { name: 'product_number', label: 'Product number', value: rec?.product_number, placeholder: 'e.g. sc-9996' },
+        { name: 'notes', label: 'Notes about the use', type: 'textarea', value: rec?.notes,
+          placeholder: 'e.g. 1:5000 in 5% milk TBS-T for western blots; 1:200 for immunostaining' },
+        { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' },
+      ],
+      submit: async (v) => {
+        const res = rec ? await api('PUT', `/antibodies/${rec.code}`, v) : await api('POST', '/antibodies', { ...v, lab: this.chosenLab });
+        if (rec) this.reload(); else location.hash = `antibody=${res.record.code}`;
+      },
+    });
+  },
+
+  antibodyView(rec) {
+    const kindLabel = rec.type ? rec.type[0].toUpperCase() + rec.type.slice(1) : '';
+    return el('div', {},
+      this.head(rec, rec.short_code || rec.description,
+        [kindLabel && `${kindLabel} antibody`, rec.host && `raised in ${rec.host}`, rec.producer, rec.status].filter(Boolean).join(' · '), [
+          el('button', { class: 'btn btn-secondary', onclick: () => this.editAntibody(rec) }, '✎ Edit')]),
+      this.facts([['Short code in lab', rec.short_code], ['Description', rec.description], ['Primary / secondary / other', kindLabel],
+        ['Producer', rec.producer], ['Source animal', rec.host], ['Product number', rec.product_number ? el('span', { class: 'mono' }, rec.product_number) : null],
+        ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
+      rec.notes ? this.section('Notes about the use', el('p', { class: 'description' }, rec.notes)) : null);
   },
 
   async upload(rec, files, caption) {

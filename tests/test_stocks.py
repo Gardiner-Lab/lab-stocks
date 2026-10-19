@@ -219,4 +219,30 @@ def test_chemicals_with_their_cas_number_and_safety_data_sheet(as_user):
 
 def test_the_page_links_to_the_safety_registers(as_user):
     page = as_user('ana').get('/').get_data(as_text=True)
-    assert 'uusofos.itis.software' in page and 'chemwatch' in page and 'data-view="chemicals"' in page
+    assert 'uusofos.itis.software' in page and 'chemwatch' in page and 'data-view="chemicals"' in page and 'data-view="antibodies"' in page
+
+
+def test_antibodies(as_user):
+    ana, ben, zoe = as_user('ana'), as_user('ben'), as_user('zoe')
+    made = _ok(ana.post('/api/antibodies', json={
+        'short_code': 'aGFP-m', 'description': 'Anti-GFP, monoclonal (B-2)', 'type': 'Primary', 'producer': 'Santa Cruz',
+        'host': 'mouse', 'product_number': 'sc-9996', 'notes': '1:1000 in 5% milk for westerns'}), 201)['record']
+    assert made['code'] == 'GARD-A-0001' and made['type'] == 'primary'
+    _ok(ana.post('/api/antibodies', json={'short_code': 'aMs-HRP', 'type': 'secondary', 'host': 'goat'}), 201)
+    assert ana.post('/api/antibodies', json={'type': 'secondary'}).status_code == 400, 'it needs a short code or description'
+    assert ana.post('/api/antibodies', json={'short_code': 'x', 'type': 'tertiary'}).status_code == 400
+    assert 'other' in _ok(ana.get('/api/me'))['antibody_types']
+    # The lab's, found by any of its fields; not another lab's.
+    assert [a['short_code'] for a in _ok(ben.get('/api/antibodies'))['antibodies']] == ['aGFP-m', 'aMs-HRP']
+    assert [a['code'] for a in _ok(ben.get('/api/antibodies?q=sc-9996'))['antibodies']] == ['GARD-A-0001']
+    assert [a['code'] for a in _ok(ben.get('/api/antibodies?q=goat'))['antibodies']] == ['GARD-A-0002']
+    assert _ok(zoe.get('/api/antibodies'))['antibodies'] == []
+    assert zoe.get('/api/antibodies/GARD-A-0001').status_code == 404
+    _ok(ben.put('/api/antibodies/GARD-A-0001', json={'notes': '1:2000', 'status': 'used up'}))
+    rec = _ok(ana.get('/api/antibodies/GARD-A-0001'))['record']
+    assert rec['notes'] == '1:2000' and "status: 'in stock' → 'used up'" in rec['changes'][0]['what']
+    from app import records
+    assert records.kind_of('gard-a-0002') == 'antibody'
+    # Linked from the notebook.
+    assert _ok(ana.get('/api/search?q=aMs'))['results'] == [
+        {'kind': 'antibody', 'code': 'GARD-A-0002', 'label': 'GARD-A-0002 aMs-HRP (secondary, goat)'}]

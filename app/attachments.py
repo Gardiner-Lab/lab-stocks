@@ -1,6 +1,6 @@
 """
-Photos and files on glycerol stocks, primers and chemicals (gels, spec sheets,
-order confirmations, safety data sheets).
+Photos and files on glycerol stocks, primers, chemicals and antibodies (gels,
+spec sheets, order confirmations, safety data sheets, blots).
 
 Kept in the stocks database, so the suite's backup takes them along.
 Whoever can see a record sees its files, and whoever can change it adds them.
@@ -33,7 +33,7 @@ KINDS = [('pdf', ('application/pdf',)), ('3d', ('model/',)),
          ('excel', ('excel', 'spreadsheetml', 'opendocument.spreadsheet', 'text/csv', 'tab-separated')),
          ('archive', ('zip', 'x-7z', 'x-tar', 'gzip', 'x-rar')),
          ('sequence', ('genbank', 'x-snapgene', 'fasta')), ('text', ('text/',))]
-RECORD_KINDS = ('glycerol', 'primer', 'chemical')
+RECORD_KINDS = ('glycerol', 'primer', 'chemical', 'antibody')
 _SIGNATURES = [(b'\x89PNG\r\n\x1a\n', 'image/png'), (b'\xff\xd8\xff', 'image/jpeg'), (b'GIF8', 'image/gif'),
                (b'BM', 'image/bmp')]
 for _ext, _type in (('.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
@@ -88,7 +88,7 @@ def listed(conn, record_kind: str, record_id: str) -> List[dict]:
 def _owner(conn, person: Person, record_kind: str, record_id: str):
     """The record a file hangs on, checked visible."""
     if record_kind not in RECORD_KINDS:
-        raise ValueError('Files go on a glycerol stock, a primer or a chemical')
+        raise ValueError('Files go on a glycerol stock, a primer, a chemical or an antibody')
     row = records.visible(conn, person, record_kind, record_id)
     return row['id'], record_kind, row['id']
 

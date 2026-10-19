@@ -1,13 +1,14 @@
 """
-Glycerol stocks, primers and chemicals: making, changing, finding them, and who sees what.
+Glycerol stocks, primers, chemicals and antibodies: making, changing, finding them, and who sees what.
 
 A record belongs to the lab of whoever made it. Everyone in that lab sees and
 changes it; other labs do not see it at all; administrators see all. Every
 change is logged.
 
 Codes start with the lab's code (the same as in the Seed Bank, when the lab has
-one there), then G for a glycerol stock, O for an oligo (primer) or C for a
-chemical, then the lab's own number: GL-G-0042, GL-O-0007, GL-C-0003.
+one there), then G for a glycerol stock, O for an oligo (primer), C for a
+chemical or A for an antibody, then the lab's own number: GL-G-0042, GL-O-0007,
+GL-C-0003, GL-A-0005.
 """
 
 import os
@@ -20,9 +21,10 @@ from app import oligo
 from app.db import connect
 from app.people import Person
 
-KINDS = {'glycerol': 'G', 'primer': 'O', 'chemical': 'C'}
-TABLE = {'glycerol': 'glycerol', 'primer': 'primers', 'chemical': 'chemicals'}
-NAMES = {'glycerol': 'glycerol stock', 'primer': 'primer', 'chemical': 'chemical'}
+KINDS = {'glycerol': 'G', 'primer': 'O', 'chemical': 'C', 'antibody': 'A'}
+TABLE = {'glycerol': 'glycerol', 'primer': 'primers', 'chemical': 'chemicals', 'antibody': 'antibodies'}
+NAMES = {'glycerol': 'glycerol stock', 'primer': 'primer', 'chemical': 'chemical', 'antibody': 'antibody'}
+ANTIBODY_TYPES = ('primary', 'secondary', 'other')
 CAS = re.compile(r'(\d{2,7})-(\d{2})-(\d)')
 SDS = 'SDS'                 # the caption of a chemical's safety data sheet
 STATUS = ('in stock', 'used up', 'discarded')
@@ -183,8 +185,8 @@ def _code(conn, kind: str, lab: str) -> str:
 
 
 def kind_of(code: str) -> Optional[str]:
-    m = re.fullmatch(r'[A-Z][A-Z0-9]{0,5}-([GOC])-\d+', (code or '').strip().upper())
-    return {'G': 'glycerol', 'O': 'primer', 'C': 'chemical'}[m.group(1)] if m else None
+    m = re.fullmatch(r'[A-Z][A-Z0-9]{0,5}-([GOCA])-\d+', (code or '').strip().upper())
+    return {'G': 'glycerol', 'O': 'primer', 'C': 'chemical', 'A': 'antibody'}[m.group(1)] if m else None
 
 
 # --- reading ---------------------------------------------------------------------
@@ -247,6 +249,12 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
             args = [SDS] + [like] * 6
             rows = conn.execute(sql + ' ORDER BY c.name COLLATE NOCASE, c.rowid', args).fetchall()
             return [_out(kind, r) for r in rows if can_see(person, r)][:limit]
+        if kind == 'antibody':
+            sql = ('SELECT * FROM antibodies WHERE deleted_at IS NULL AND (code LIKE ? OR short_code LIKE ? '
+                   'OR description LIKE ? OR type LIKE ? OR producer LIKE ? OR host LIKE ? OR product_number LIKE ? '
+                   "OR notes LIKE ?) ORDER BY short_code = '', short_code COLLATE NOCASE, description COLLATE NOCASE, rowid")
+            rows = conn.execute(sql, [like] * 8).fetchall()
+            return [_out(kind, r) for r in rows if can_see(person, r)][:limit]
         if kind == 'glycerol':
             sql = ('SELECT * FROM glycerol WHERE deleted_at IS NULL AND (code LIKE ? OR plasmid_name LIKE ? OR clone LIKE ? '
                    'OR host LIKE ? OR selection LIKE ? OR location LIKE ? OR notes LIKE ?)')
@@ -266,13 +274,17 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
 
 
 def search(person: Person, q: str, limit: int = 20) -> List[dict]:
-    """Glycerol stocks, primers and chemicals by code or name, for links from elsewhere (the notebook)."""
+    """Glycerol stocks, primers, chemicals and antibodies by code or name, for links from elsewhere (the notebook)."""
     q = (q or '').strip()
     found = [dict(kind='glycerol', code=r['code'], label=f"{r['code']} {r['plasmid_name']}"
                   + (f" clone {r['clone']}" if r['clone'] else '')) for r in list_records(person, 'glycerol', q, limit=limit)]
     found += [dict(kind='primer', code=r['code'], label=f"{r['code']} {r['name']}") for r in list_records(person, 'primer', q, limit=limit)]
     found += [dict(kind='chemical', code=r['code'], label=f"{r['code']} {r['name']}" + (f" (CAS {r['cas']})" if r['cas'] else ''))
               for r in list_records(person, 'chemical', q, limit=limit)]
+    found += [dict(kind='antibody', code=r['code'], label=f"{r['code']} " + ' '.join(
+                   filter(None, [r['short_code'], r['description'] if not r['short_code'] else '',
+                                 f"({', '.join(filter(None, [r['type'], r['host']]))})"])))
+              for r in list_records(person, 'antibody', q, limit=limit)]
     exact = [f for f in found if f['code'].upper() == q.upper()]
     return (exact + [f for f in found if f not in exact])[:limit]
 
@@ -343,7 +355,29 @@ def _chemical_fields(data: dict, partial: bool) -> Dict[str, Any]:
     return out
 
 
-FIELDS = {'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _chemical_fields}
+def _antibody_fields(data: dict, partial: bool) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for key, limit in (('short_code', 60), ('description', 300), ('producer', 120), ('host', 60),
+                       ('product_number', 80), ('notes', 5000)):
+        if key in data or not partial:
+            out[key] = _text(data.get(key), limit)
+    if not partial and not (out['short_code'] or out['description']):
+        raise ValueError('An antibody needs its short code in the lab or a description')
+    if 'type' in data or not partial:
+        t = (_text(data.get('type')) or 'primary').lower()
+        if t not in ANTIBODY_TYPES:
+            raise ValueError(f'type must be one of {", ".join(ANTIBODY_TYPES)}')
+        out['type'] = t
+    if 'status' in data or not partial:
+        s = _text(data.get('status')) or 'in stock'
+        if s not in STATUS:
+            raise ValueError(f'status must be one of {", ".join(STATUS)}')
+        out['status'] = s
+    return out
+
+
+FIELDS = {'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _chemical_fields,
+          'antibody': _antibody_fields}
 
 
 def create(person: Person, kind: str, data: dict) -> str:

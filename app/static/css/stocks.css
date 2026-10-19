@@ -204,3 +204,6 @@ ul.plain { list-style: none; padding: 0; margin: .3rem 0; }
 .switch input:focus-visible + .slider { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
 .switch .switch-label { font-size: .9em; }
 .record-head .actions .switch { margin-right: 4px; }
+
+/* Long notes in a list cell: one line, the whole on hover */
+table.data .clip { display: inline-block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }

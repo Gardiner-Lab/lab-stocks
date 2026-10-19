@@ -3,7 +3,7 @@
  * The Lab Stocks page: glycerol stocks, primers, chemicals and antibodies, a list
  * of each and a page for each record. Addresses: #glycerol, #primers, #chemicals,
  * #antibodies, #glycerol=GL-G-0001, #primer=GL-O-0001, #chemical=GL-C-0001,
- * #antibody=GL-A-0001.
+ * #antibody=GL-A-0001; and the order list, #orders.
  */
 
 const ST = window.ST;
@@ -222,6 +222,7 @@ const App = {
       this.meta = await api('GET', '/me');
       this.labPicker(this.meta.lab.labs);
       await this.loadLab();
+      this.showWaiting(this.meta.orders.waiting);
     } catch (err) {
       put(document.getElementById('main'), el('p', { class: 'empty' }, err.message));
       return;
@@ -263,6 +264,7 @@ const App = {
       tab.classList.toggle('active', tab.dataset.view === (record ? PLURAL[record[1]] : hash));
     }
     if (record) this.showRecord(record[1], decodeURIComponent(record[2]));
+    else if (hash === 'orders') this.showOrders();
     else this.showList(SINGULAR[hash] || 'glycerol');
   },
 
@@ -377,8 +379,10 @@ const App = {
     return el('div', { class: 'record-head' },
       el('div', {}, el('div', { class: 'crumbs' }, el('a', { href: `#${PLURAL[rec.kind]}` }, `${ICON[rec.kind]} All ${NAMES[rec.kind]}`)),
         el('h1', {}, el('span', { class: 'code-badge' }, rec.code), ' ', title),
-        subtitle ? el('div', { class: 'hint' }, subtitle) : null),
+        subtitle ? el('div', { class: 'hint' }, subtitle) : null, this.onOrder(rec)),
       el('span', { class: 'actions' }, actions,
+        rec.kind === 'glycerol' ? null : el('button', { class: 'btn btn-secondary', title: 'Put it on the lab\'s order list, with its details',
+          onclick: () => this.orderStock(rec) }, '🛒 Add to order'),
         el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, '🏷 Label'),
         el('button', { class: 'btn btn-secondary', title: 'Delete', onclick: () => modal({
           title: `Delete ${rec.code}?`,
@@ -553,6 +557,7 @@ const App = {
       ],
       submit: async (v) => {
         const res = rec ? await api('PUT', `/chemicals/${rec.code}`, v) : await api('POST', '/chemicals', { ...v, lab: this.chosenLab });
+        if (res.ordered) { toast(`${res.record.name}: ${res.ordered}`, 'success', 3500); this.refreshWaiting(); }
         if (rec) this.reload(); else location.hash = `chemical=${res.record.code}`;
       },
     });
@@ -562,17 +567,19 @@ const App = {
   outToggle(rec) {
     const box = el('input', { type: 'checkbox', checked: rec.status === 'out', onchange: async () => {
       const status = box.checked ? 'out' : 'in stock';
+      let res;
       try {
-        await api('PUT', `/chemicals/${rec.code}`, { status });
+        res = await api('PUT', `/chemicals/${rec.code}`, { status });
       } catch (err) { box.checked = !box.checked; toast(`Not changed: ${err.message}`, 'error', 6000); return; }
       rec.status = status;
-      toast(`${rec.name}: ${status === 'out' ? 'marked as out' : 'back in stock'}`, 'success', 2500);
+      toast(`${rec.name}: ${status === 'out' ? 'marked as out' : 'back in stock'}${res.ordered ? `, and ${res.ordered}` : ''}`, 'success', 3500);
+      this.refreshWaiting();
       // In the list: grey its row; on its page: show it again.
       const row = box.closest('tr');
       if (row) row.classList.toggle('faded', status !== 'in stock');
       else this.reload();
     } });
-    return el('label', { class: 'switch', title: 'Out: it has run out and needs ordering', onclick: (e) => e.stopPropagation() },
+    return el('label', { class: 'switch', title: 'Out: it has run out and needs ordering (it goes on the order list)', onclick: (e) => e.stopPropagation() },
       box, el('span', { class: 'slider' }), el('span', { class: 'switch-label' }, 'Out'));
   },
 
@@ -643,6 +650,191 @@ const App = {
         ['Producer', rec.producer], ['Source animal', rec.host], ['Product number', rec.product_number ? el('span', { class: 'mono' }, rec.product_number) : null],
         ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? this.section('Notes about the use', el('p', { class: 'description' }, rec.notes)) : null);
+  },
+
+  /* orders ------------------------------------------------------------------------- */
+
+  /** The number on the Orders tab: requests waiting to be ordered, for a lab admin. */
+  showWaiting(n) {
+    const badge = document.getElementById('orders-waiting');
+    if (!badge) return;
+    badge.hidden = !n;
+    badge.textContent = n || '';
+    badge.title = n ? `${n} request${n === 1 ? '' : 's'} waiting to be ordered` : '';
+  },
+
+  async refreshWaiting() {
+    if (!this.meta.orders.handles.length) return;
+    try { this.showWaiting((await api('GET', '/orders/waiting')).waiting); } catch (e) { /* shown next time */ }
+  },
+
+  /** On a stock's page: the line saying it is on the order list. */
+  onOrder(rec) {
+    const o = rec.order;
+    if (!o) return null;
+    return el('div', { class: 'on-order' }, el('a', { href: '#orders' }, '🛒 On the order list'), ': ',
+      o.status === 'ordered' ? `ordered ${localTime(o.ordered_at).slice(0, 10)}, waiting for it to arrive`
+        : `asked for by ${o.requested_by || '—'} ${localTime(o.requested_at).slice(0, 10)}${o.auto ? ' (marked out)' : ''}, not ordered yet`);
+  },
+
+  /** Put a chemical, primer or antibody on the order list: its details go along. */
+  orderStock(rec) {
+    if (rec.order) { toast('It is on the order list already', 'info', 3000); return; }
+    formModal({
+      title: `Order ${rec.name || rec.short_code || rec.description || rec.code}`,
+      intro: `${rec.code} goes on the lab's order list with its details${rec.kind === 'antibody' ? ' (producer and product number)' : rec.kind === 'primer' ? ' (its sequence)' : ''}; the lab admin orders it.`,
+      fields: [
+        { name: 'quantity', label: 'How much', value: rec.kind === 'chemical' ? rec.size : '', placeholder: rec.kind === 'primer' ? 'e.g. 25 nmol, desalted' : 'e.g. 2 × 500 mL' },
+        { name: 'notes', label: 'Note for the lab admin', type: 'textarea', placeholder: 'e.g. needed for Friday\'s westerns' },
+        { name: 'urgent', label: 'Urgent', type: 'checkbox' },
+      ],
+      label: '🛒 Add to order',
+      submit: async (v) => {
+        const res = await api('POST', '/orders', { ...v, record: rec.code });
+        toast(res.already ? 'It was on the order list already' : 'On the order list', 'success', 3000);
+        this.refreshWaiting();
+        this.reload();
+      },
+    });
+  },
+
+  orderFields(o) {
+    const cats = this.meta.orders.categories;
+    return [
+      { name: 'item', label: 'What', value: o?.item, placeholder: 'e.g. Phusion polymerase, 1000 µL tips, agarose' },
+      { name: 'category', label: 'Kind', type: 'select', value: o?.category || 'other', options: cats.map((c) => [c, c[0].toUpperCase() + c.slice(1)]) },
+      { name: 'quantity', label: 'How much', value: o?.quantity, placeholder: 'e.g. 2 × 100 U, 10 racks' },
+      { name: 'supplier', label: 'Supplier', value: o?.supplier, placeholder: 'e.g. NEB, Merck, Thermo Fisher' },
+      { name: 'product_number', label: 'Product number', value: o?.product_number, placeholder: 'e.g. M0530S' },
+      { name: 'link', label: 'Link', type: 'url', value: o?.link, placeholder: 'https://… the product page' },
+      { name: 'notes', label: 'Notes', type: 'textarea', value: o?.notes },
+      { name: 'urgent', label: 'Urgent', type: 'checkbox', value: o?.urgent },
+    ];
+  },
+
+  orderRequest() {
+    const labs = this.meta.lab.labs;
+    formModal({
+      title: 'Order request',
+      intro: `Ask for anything the lab needs: enzymes, kits, consumables, chemicals.${labs.length > 1 ? ` It goes to ${this.meta.lab.lab}'s lab admin (choose another lab at the top).` : ' The lab admin orders it.'} For a chemical, primer or antibody the lab already has, use 🛒 Add to order on its page instead: its details come along.`,
+      fields: this.orderFields(null),
+      label: '🛒 Send the request',
+      submit: async (v) => {
+        await api('POST', '/orders', { ...v, lab: this.chosenLab });
+        toast('Request sent to the lab admin', 'success', 3000);
+        this.refreshWaiting();
+        this.showOrders();
+      },
+    });
+  },
+
+  async setOrder(o, change, done) {
+    try {
+      await api('PUT', `/orders/${o.id}`, change);
+      if (done) toast(done, 'success', 2500);
+    } catch (err) { toast(err.message, 'error', 6000); }
+    // From an order's dialog: close it; the list shows the change.
+    document.querySelectorAll('.modal-backdrop').forEach((b) => b.remove());
+    this.refreshWaiting();
+    this.showOrders();
+  },
+
+  /** What a lab admin (or the one who asked) can do with an order, as buttons. */
+  orderActions(o) {
+    const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
+    const cancel = () => modal({
+      title: `Cancel the order of ${o.item}?`,
+      build: (b) => b.append(el('p', {}, 'It stays in the list of done orders, marked cancelled.')),
+      buttons: [{ label: 'Keep it', kind: 'secondary' }, { label: 'Cancel the order', kind: 'danger', onClick: () => this.setOrder(o, { status: 'cancelled' }, 'Cancelled') }],
+    });
+    const out = [];
+    if (o.can_handle && o.status === 'requested') out.push(el('button', { class: 'btn btn-primary btn-sm', onclick: stop(() => this.setOrder(o, { status: 'ordered' }, `${o.item}: ordered`)) }, '✓ Ordered'));
+    if (o.can_handle && o.status === 'ordered') out.push(el('button', { class: 'btn btn-primary btn-sm', onclick: stop(() => this.setOrder(o, { status: 'received' }, `${o.item}: received${o.record_code ? `; ${o.record_code} is in stock` : ''}`)) }, '📦 Received'));
+    if ((o.can_handle && ['requested', 'ordered'].includes(o.status)) || (o.can_change && o.status === 'requested')) {
+      out.push(el('button', { class: 'btn btn-secondary btn-sm', title: 'Cancel', onclick: stop(cancel) }, '✕'));
+    }
+    if (o.can_handle && ['received', 'cancelled'].includes(o.status)) out.push(el('button', { class: 'btn btn-secondary btn-sm', title: 'Put it back on the list, to be ordered', onclick: stop(() => this.setOrder(o, { status: 'requested' }, 'Back on the list')) }, '↺'));
+    return el('span', { class: 'row-actions' }, out);
+  },
+
+  async showOrders() {
+    const main = document.getElementById('main');
+    const handles = this.meta.orders.handles;
+    const filter = el('select', { class: 'order-filter', 'aria-label': 'Which orders' },
+      [['open', 'Open: to order and on their way'], ['requested', 'To order'], ['ordered', 'Ordered, on their way'],
+        ['closed', 'Done: received or cancelled'], ['', 'All']].map(([v, t]) => el('option', { value: v, selected: (this.orderFilter ?? 'open') === v }, t)));
+    const query = el('input', { type: 'search', class: 'list-search', value: this.q_orders || '',
+      placeholder: 'Search by item, supplier, product number, who asked, or a stock\'s code' });
+    const sheet = el('a', { class: 'btn btn-secondary', title: 'The orders shown, as a spreadsheet: for filling in a supplier\'s order form' }, '⬇ Spreadsheet');
+    const table = el('div', { class: 'list' });
+    const draw = async () => {
+      this.orderFilter = filter.value;
+      this.q_orders = query.value;
+      const qs = `?status=${encodeURIComponent(filter.value)}&q=${encodeURIComponent(query.value)}`;
+      sheet.href = url(`/api/orders.csv${qs}`);
+      let data;
+      try { data = await api('GET', `/orders${qs}`); } catch (err) { put(table, el('p', { class: 'empty' }, err.message)); return; }
+      this.showWaiting(data.waiting);
+      put(table, this.ordersTable(data.orders, !!handles.length));
+    };
+    let timer;
+    query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
+    filter.addEventListener('change', draw);
+    put(main,
+      el('div', { class: 'page-head' }, el('h1', {}, '🛒 Orders'),
+        el('span', { class: 'actions' }, el('button', { class: 'btn btn-primary', onclick: () => this.orderRequest() }, '＋ Order request'),
+          handles.length ? sheet : null)),
+      el('p', { class: 'hint' }, handles.length
+        ? `You order for ${handles.join(', ')}: these are the lab's requests, from the request form, 🛒 Add to order on a chemical, primer or antibody, and chemicals switched to Out. Mark each ✓ Ordered when you have ordered it, and 📦 Received when it arrives; a stock that had run out is then back in stock.`
+        : 'Ask for what the lab needs with ＋ Order request, or 🛒 Add to order on a chemical, primer or antibody; a chemical switched to Out is added by itself. Your lab admin orders it. These are your requests, and how far each has got.'),
+      el('div', { class: 'list-tools' }, filter, query), table);
+    await draw();
+  },
+
+  ordersTable(rows, handler) {
+    if (!rows.length) return el('p', { class: 'empty' }, 'No orders here.');
+    const STATUS_LABEL = { requested: 'to order', ordered: 'ordered', received: 'received', cancelled: 'cancelled' };
+    return el('table', { class: 'data orders' },
+      el('thead', {}, el('tr', {}, ['#', 'What', 'Kind', 'How much', 'Supplier', 'Product number', handler ? 'Asked by' : 'Asked', 'Status', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, rows.map((o) => el('tr', { class: `clickable ${['received', 'cancelled'].includes(o.status) ? 'faded' : ''}`, onclick: () => this.openOrder(o) },
+        el('td', { class: 'code' }, o.id),
+        el('td', {}, o.urgent ? el('span', { class: 'urgent', title: 'Urgent' }, '❗ ') : null, el('b', {}, o.item),
+          o.record_code ? [' ', el('a', { class: 'code-badge', href: `#${o.record_kind}=${o.record_code}`, onclick: (e) => e.stopPropagation() }, o.record_code)] : null,
+          o.details ? el('div', { class: 'hint clip' }, o.details) : null,
+          o.notes ? el('div', { class: 'hint clip', title: o.notes }, `“${o.notes}”`) : null),
+        el('td', {}, o.category), el('td', {}, o.quantity),
+        el('td', {}, o.link ? el('a', { href: o.link, target: '_blank', rel: 'noopener noreferrer', onclick: (e) => e.stopPropagation() }, `${o.supplier || 'link'} ↗`) : o.supplier),
+        el('td', {}, el('span', { class: 'mono' }, o.product_number)),
+        el('td', {}, handler ? `${o.requested_by || '—'} · ` : '', localTime(o.requested_at).slice(0, 10), o.auto ? el('span', { class: 'hint', title: 'Added on marking the chemical out' }, ' (out)') : null,
+          handler && this.meta.orders.handles.length > 1 ? el('div', { class: 'hint' }, o.lab) : null),
+        el('td', {}, el('span', { class: `status-pill status-${o.status}` }, STATUS_LABEL[o.status] || o.status),
+          o.status === 'ordered' && o.ordered_at ? el('div', { class: 'hint' }, localTime(o.ordered_at).slice(0, 10)) : null),
+        el('td', {}, this.orderActions(o))))));
+  },
+
+  /** An order: everything about it, its history, and changing it (the lab admin, or the one who asked until it is ordered). */
+  async openOrder(o) {
+    let full;
+    try { full = (await api('GET', `/orders/${o.id}`)).order; } catch (err) { toast(err.message, 'error'); return; }
+    const when = (at, by) => (at ? `${localTime(at)}${by ? ` · ${by}` : ''}` : null);
+    modal({
+      title: `Order ${full.id}: ${full.item}`, wide: true,
+      build: (body) => body.append(
+        this.facts([['What', full.item], ['Stock', full.record_code ? el('a', { href: `#${full.record_kind}=${full.record_code}`, onclick: () => document.querySelector('.modal-backdrop')?.remove() }, full.record_code) : null],
+          ['Kind', full.category], ['How much', full.quantity], ['Supplier', full.supplier], ['Product number', full.product_number],
+          ['Details', full.details], ['Link', full.link ? el('a', { href: full.link, target: '_blank', rel: 'noopener noreferrer' }, full.link) : null],
+          ['Notes', full.notes], ['Urgent', full.urgent ? 'yes' : null], ['Lab', full.lab],
+          ['Asked', when(full.requested_at, full.requested_by) + (full.auto ? ' (on marking the chemical out)' : '')],
+          ['Ordered', when(full.ordered_at, full.ordered_by)], ['Received', when(full.received_at, full.received_by)],
+          ['Cancelled', full.status === 'cancelled' ? when(full.closed_at, full.closed_by) : null], ['Status', full.status]]),
+        el('div', { class: 'actions' }, this.orderActions(full)),
+        el('details', { class: 'history' }, el('summary', {}, `History (${full.changes.length})`),
+          el('ul', { class: 'plain' }, full.changes.map((c) => el('li', {}, el('span', { class: 'hint' }, `${localTime(c.changed_at)} · ${c.changed_by || '—'}: `), c.what))))),
+      buttons: full.can_change ? [{ label: 'Close', kind: 'secondary' }, { label: '✎ Edit', onClick: () => formModal({
+        title: `Edit order ${full.id}`, fields: this.orderFields(full),
+        submit: async (v) => { await api('PUT', `/orders/${full.id}`, v); this.showOrders(); },
+      }) }] : [{ label: 'Close', kind: 'secondary' }],
+    });
   },
 
   async upload(rec, files, caption) {

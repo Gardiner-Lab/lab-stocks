@@ -226,6 +226,10 @@ def detail(person: Person, kind: str, ident: str) -> dict:
         out['changes'] = [dict(r) for r in conn.execute(
             'SELECT changed_by, changed_at, what FROM changes WHERE record_kind = ? AND record_id = ? '
             'ORDER BY rowid DESC LIMIT 200', (kind, row['id']))]
+        if kind != 'glycerol':
+            from app import orders
+            # Its order, when it is on the order list.
+            out['order'] = orders.open_order(conn, row['code'])
         if kind == 'glycerol':
             from app import sources
             # Whether the plasmid it holds can be opened in the editor, and its name there now.
@@ -381,6 +385,11 @@ FIELDS = {'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _c
 
 
 def create(person: Person, kind: str, data: dict) -> str:
+    return create_noting(person, kind, data)[0]
+
+
+def create_noting(person: Person, kind: str, data: dict):
+    """Makes a record; gives its id, and what it did to the order list (a chemical made out), or None."""
     fields = FIELDS[kind](data, partial=False)
     if kind == 'glycerol':
         fields['source'] = 'sequencing' if data.get('source') == 'sequencing' else 'manual'
@@ -393,10 +402,15 @@ def create(person: Person, kind: str, data: dict) -> str:
                      (record_id, code, lab, person.username, *fields.values()))
         _log(conn, kind, record_id, person.username,
              f'created {code}' + (' on confirming the plasmid by sequencing' if fields.get('source') == 'sequencing' else ''))
-        return record_id
+        ordered = None
+        if kind == 'chemical' and fields['status'] == 'out':
+            from app import orders
+            ordered = orders.chemical_status_changed(conn, person, _row(conn, kind, record_id), 'in stock', 'out')
+        return record_id, ordered
 
 
-def update(person: Person, kind: str, ident: str, data: dict) -> None:
+def update(person: Person, kind: str, ident: str, data: dict) -> Optional[str]:
+    """Changes a record; gives what that did to the order list (a chemical marked out or in stock), or None."""
     fields = FIELDS[kind](data, partial=True)
     if kind == 'glycerol' and fields.get('plasmid_id'):
         # Linked to a plasmid of the editor's library: one this person may open, named as it is there.
@@ -415,6 +429,10 @@ def update(person: Person, kind: str, ident: str, data: dict) -> None:
                          'updated_at = CURRENT_TIMESTAMP WHERE id = ?', (*fields.values(), row['id']))
         if changes:
             _log(conn, kind, row['id'], person.username, '; '.join(changes))
+        if kind == 'chemical' and fields.get('status', row['status']) != row['status']:
+            from app import orders
+            return orders.chemical_status_changed(conn, person, _row(conn, kind, row['id']), row['status'], fields['status'])
+    return None
 
 
 def delete(person: Person, kind: str, ident: str) -> None:

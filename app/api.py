@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request
 
-from app import attachments, oligo, people, records, sources
+from app import attachments, oligo, orders, people, records, sources
 
 api = Blueprint('api', __name__)
 PLURAL = {'glycerol': 'glycerol', 'primers': 'primer', 'chemicals': 'chemical', 'antibodies': 'antibody'}
@@ -45,7 +45,9 @@ def me(person):
     return jsonify({'person': person.to_dict(), 'lab': records.lab_info(person),
                     'status': records.STATUS, 'chemical_status': records.CHEMICAL_STATUS,
                     'antibody_types': records.ANTIBODY_TYPES,
-                    'directions': records.DIRECTIONS})
+                    'directions': records.DIRECTIONS,
+                    'orders': {'handles': orders.handles(person), 'waiting': orders.waiting(person),
+                               'categories': orders.CATEGORIES, 'status': orders.STATUS}})
 
 
 @api.get('/lab')
@@ -79,6 +81,49 @@ def describe_oligo(person):
     return jsonify(oligo.describe(oligo.clean(request.args.get('sequence', ''))))
 
 
+# --- the order list ---------------------------------------------------------------
+
+@api.get('/orders')
+@signed_in
+def list_orders(person):
+    return jsonify({'orders': orders.list_orders(person, request.args.get('status', ''), request.args.get('q', '')),
+                    'handles': orders.handles(person), 'waiting': orders.waiting(person)})
+
+
+@api.get('/orders/waiting')
+@signed_in
+def orders_waiting(person):
+    return jsonify({'waiting': orders.waiting(person)})
+
+
+@api.get('/orders.csv')
+@signed_in
+def orders_csv(person):
+    response = Response(orders.as_csv(person, request.args.get('status', ''), request.args.get('q', '')),
+                        mimetype='text/csv')
+    response.headers['Content-Disposition'] = 'attachment; filename="orders.csv"'
+    return response
+
+
+@api.post('/orders')
+@signed_in
+def create_order(person):
+    made = orders.create(person, _body())
+    return jsonify(made), 200 if made['already'] else 201
+
+
+@api.get('/orders/<order_id>')
+@signed_in
+def get_order(person, order_id):
+    return jsonify({'order': orders.detail(person, order_id)})
+
+
+@api.put('/orders/<order_id>')
+@signed_in
+def update_order(person, order_id):
+    return jsonify({'order': orders.update(person, order_id, _body())})
+
+
 @api.get('/<collection>')
 @signed_in
 def list_stock(person, collection):
@@ -91,8 +136,8 @@ def list_stock(person, collection):
 @signed_in
 def create_stock(person, collection):
     kind = _kind(collection)
-    record_id = records.create(person, kind, _body())
-    return jsonify({'record': records.detail(person, kind, record_id)}), 201
+    record_id, ordered = records.create_noting(person, kind, _body())
+    return jsonify({'record': records.detail(person, kind, record_id), 'ordered': ordered}), 201
 
 
 @api.post('/primers/many')
@@ -117,8 +162,8 @@ def get_stock(person, collection, ident):
 @signed_in
 def update_stock(person, collection, ident):
     kind = _kind(collection)
-    records.update(person, kind, ident, _body())
-    return jsonify({'record': records.detail(person, kind, ident)})
+    ordered = records.update(person, kind, ident, _body())
+    return jsonify({'record': records.detail(person, kind, ident), 'ordered': ordered})
 
 
 @api.delete('/<collection>/<ident>')

@@ -50,6 +50,14 @@ class Person:
     def leads(self, lab: Optional[str]) -> bool:
         return bool(lab) and lab.casefold() in self.lab_names(led_only=True)
 
+    def administered(self) -> set:
+        """The labs (casefolded) they are a lab admin of: who handles a lab's orders."""
+        return {m['lab'].casefold() for m in self.labs if m.get('lab') and m.get('lab_admin')}
+
+    def administers(self, lab: Optional[str]) -> bool:
+        """Handles this lab's orders: its lab admin, or an administrator."""
+        return self.is_admin or (bool(lab) and lab.casefold() in self.administered())
+
     def shares_lab(self, username: Optional[str]) -> bool:
         """In a lab together with this person."""
         if not username:
@@ -69,7 +77,7 @@ class Person:
 
     def to_dict(self) -> dict:
         return {'username': self.username, 'role': self.role, 'lab': self.lab,
-                'labs': [{'lab': m['lab'], 'role': m['role']} for m in self.labs] or
+                'labs': [{'lab': m['lab'], 'role': m['role'], 'lab_admin': bool(m.get('lab_admin'))} for m in self.labs] or
                         ([{'lab': self.lab, 'role': self.lab_role}] if self.lab else []),
                 'is_admin': self.is_admin}
 
@@ -112,16 +120,20 @@ def memberships() -> Dict[str, dict]:
     of them, first joined first, each with their role there ('lab_lead' or
     'member'; a lab admin is a lab lead). From the suite: lab_members, or the
     members table of a suite from before people could be in several labs.
+    A lab admin is a lab lead marked lab_admin (suites from 2.7.0 on).
     """
-    rows = _read(suite_path(), 'SELECT m.username, labs.name AS lab, labs.id AS lab_id, m.role '
+    rows = _read(suite_path(), 'SELECT m.username, labs.name AS lab, labs.id AS lab_id, m.role, m.lab_admin '
                                'FROM lab_members m JOIN labs ON labs.id = m.lab_id ORDER BY m.joined_at, m.rowid')
     if not rows:
-        rows = _read(suite_path(), 'SELECT members.username, labs.name AS lab, labs.id AS lab_id, members.role '
-                                   'FROM members JOIN labs ON labs.id = members.lab_id')
+        rows = _read(suite_path(), 'SELECT m.username, labs.name AS lab, labs.id AS lab_id, m.role, 0 AS lab_admin '
+                                   'FROM lab_members m JOIN labs ON labs.id = m.lab_id ORDER BY m.joined_at, m.rowid')
+    if not rows:
+        rows = _read(suite_path(), 'SELECT members.username, labs.name AS lab, labs.id AS lab_id, members.role, '
+                                   '0 AS lab_admin FROM members JOIN labs ON labs.id = members.lab_id')
     found: Dict[str, dict] = {}
     for r in rows:
         lab = {'lab': r['lab'], 'lab_id': str(r['lab_id']) if r['lab_id'] is not None else None,
-               'role': r['role'] or 'member'}
+               'role': r['role'] or 'member', 'lab_admin': bool(r['lab_admin'])}
         found.setdefault(r['username'], {**lab, 'labs': []})['labs'].append(lab)
     return found
 

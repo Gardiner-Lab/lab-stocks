@@ -17,12 +17,24 @@ The Gardiner Lab suite's glycerol stocks, primers, chemicals and antibodies.
 - **Chemicals** are numbered `GL-C-0003`.
   - Each records its name, CAS number (its check digit is checked), the room it is kept in, its size
     and status.
-  - An **Out** switch, in the list and on its page, marks one that has run out.
+  - An **Out** switch, in the list and on its page, marks one that has run out, and puts it on the
+    order list.
   - A chemical's page holds its safety data sheet (SDS, a PDF), and links to the university's
     hazardous substances register (SOFOS) and to Chemwatch, with its CAS number ready to copy.
 - **Antibodies** are numbered `GL-A-0005`.
   - Each records the short code the lab calls it, a description, whether it is primary, secondary
     or other, its producer, the animal it is raised in, its product number, and notes about using it.
+- **Orders**: the lab's order list.
+  - Anyone in a lab asks for something with the order request form (an enzyme, a kit, tips), or
+    with 🛒 Add to order on a chemical, primer or antibody, whose details (CAS number, sequence,
+    producer and product number) go along. A chemical switched to Out is added by itself, and taken
+    off again if it is switched back before it is ordered.
+  - The lab's **lab admins** (a role set in the suite) see the lab's orders, and no other lab's; the
+    Orders tab shows how many wait. They mark each ordered, then received, or cancel it. When an
+    order for a stock that had run out arrives, the stock is back in stock. The orders shown can be
+    downloaded as a spreadsheet for a supplier's order form.
+  - Everyone else sees their own requests and how far each has got, and can change or cancel one
+    until it is ordered.
 - **Shared with the other tools:**
   - storage, labels with QR codes, photos and files;
   - links from the Lab Notebook (`@`), with the pages that mention each stock.

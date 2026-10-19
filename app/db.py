@@ -9,6 +9,8 @@ Lab Stocks' database: glycerol stocks, primers, chemicals and antibodies, each l
     antibodies an antibody: the lab's short code for it, what it is, primary or
                secondary, who makes it, the animal it is raised in, its product
                number, and notes about using it
+    orders     what the lab needs ordered: asked for by anyone in the lab (or by
+               marking a chemical out), ordered and received by its lab admin
     attachments, changes, counters, lab_codes   as in the Seed Bank
 
 Codes start with the lab's code: GL-G-0042 a glycerol stock, GL-O-0007 a primer,
@@ -99,6 +101,35 @@ CREATE TABLE IF NOT EXISTS antibodies (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lab TEXT NOT NULL,
+    item TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'other',
+    record_kind TEXT,
+    record_code TEXT,
+    quantity TEXT NOT NULL DEFAULT '',
+    supplier TEXT NOT NULL DEFAULT '',
+    product_number TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '',
+    link TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    urgent INTEGER NOT NULL DEFAULT 0,
+    auto INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'requested',
+    requested_by TEXT,
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ordered_by TEXT,
+    ordered_at TIMESTAMP,
+    received_by TEXT,
+    received_at TIMESTAMP,
+    closed_by TEXT,
+    closed_at TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_orders_lab ON orders(lab, status);
+CREATE INDEX IF NOT EXISTS idx_orders_record ON orders(record_code);
 
 CREATE TABLE IF NOT EXISTS attachments (
     id TEXT PRIMARY KEY,

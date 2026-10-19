@@ -207,3 +207,20 @@ ul.plain { list-style: none; padding: 0; margin: .3rem 0; }
 
 /* Long notes in a list cell: one line, the whole on hover */
 table.data .clip { display: inline-block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+/* orders */
+.count-badge { display: inline-block; min-width: 1.2rem; padding: 0 .35rem; border-radius: 1rem; background: var(--danger); color: #fff;
+    font-size: .72rem; font-weight: 700; text-align: center; line-height: 1.2rem; margin-left: .15rem; }
+.count-badge[hidden] { display: none; }
+.list-tools { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.list-tools .list-search { flex: 1; min-width: 14rem; }
+.order-filter { font: inherit; padding: .4rem .55rem; border: 1px solid var(--border); border-radius: .35rem; }
+.status-pill { display: inline-block; padding: 0 .5rem; border-radius: 1rem; font-size: .8rem; white-space: nowrap; background: var(--hover); }
+.status-requested { background: #fef3c7; color: #92400e; }
+.status-ordered { background: #dbeafe; color: #1e40af; }
+.status-received { background: var(--accent-soft); color: #115e59; }
+.row-actions { display: inline-flex; gap: .3rem; white-space: nowrap; }
+.urgent { color: var(--danger); }
+.on-order { margin-top: .3rem; font-size: .9rem; color: #92400e; }
+table.data.orders td { vertical-align: top; }
+table.data.orders .code-badge { white-space: nowrap; }

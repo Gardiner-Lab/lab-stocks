@@ -128,15 +128,25 @@ def test_a_glycerol_stock_is_linked_to_its_plasmid_and_says_when_it_cannot_be_op
     assert rec['plasmid'] == {'state': 'open', 'id': 'p1', 'name': 'pGreen-35S-GFP'}
     assert any('plasmid_id' in c['what'] for c in rec['changes']), 'the change is logged'
     # Only to plasmids this person may open, and ones that exist; an empty link changes nothing.
-    assert ben.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'p2'}).status_code == 400
+    conn = sqlite3.connect(world['paths']['editor'])
+    conn.execute("INSERT INTO users VALUES ('zoe', 'zoe')")
+    conn.execute("INSERT INTO sequences (id, name, sequence, shared, owner_id) VALUES ('p3', 'pZoes', 'ACGT', 1, 'zoe')")
+    conn.commit()
+    assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'p3'}).status_code == 400   # another lab's
     assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'nothing-like-it'}).status_code == 400
     assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': ''}).status_code == 200
     assert ana.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid_id'] == 'p1'
-    # Linked to ana's own plasmid: the rest of the lab sees the stock, and why the plasmid will not open.
-    assert ana.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'p2'}).status_code == 200
-    assert ben.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid'] == {'state': 'private', 'owner': 'ana'}
+    # A lab mate's plasmid, even one not public: always the lab's to link and open.
+    assert ben.put(f"/api/glycerol/{made['code']}", json={'plasmid_id': 'p2'}).status_code == 200
+    assert ben.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid']['state'] == 'open'
+    # Pointing at another lab's plasmid (linked when it was public, say): it says why it will not open.
+    sconn = sqlite3.connect(world['paths']['stocks'])
+    sconn.execute("UPDATE glycerol SET plasmid_id = 'p3' WHERE code = ?", (made['code'],))
+    sconn.commit()
+    assert ana.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid'] == {'state': 'other_lab', 'owner': 'zoe'}
+    sconn.execute("UPDATE glycerol SET plasmid_id = 'p2' WHERE code = ?", (made['code'],))
+    sconn.commit()
     # Gone from the editor's library: said so, rather than a link that goes nowhere.
-    conn = sqlite3.connect(world['paths']['editor'])
     conn.execute("DELETE FROM sequences WHERE id = 'p2'")
     conn.commit()
     assert ana.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid'] == {'state': 'missing'}

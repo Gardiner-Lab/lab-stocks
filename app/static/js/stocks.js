@@ -427,7 +427,7 @@ const App = {
       : el('span', {}, rec.plasmid_name || '—', ' ', el('span', { class: 'hint warn-text' }, {
         unlinked: '(not linked to a plasmid in the editor)',
         missing: '(no longer in the Plasmid Editor\'s library)',
-        private: `(in ${linked.owner || 'someone'}'s own plasmids, not shared)`,
+        other_lab: `(${linked.owner || 'someone'}'s, in another lab, and not public)`,
       }[linked.state] || ''));
     return el('div', {},
       this.head(rec, (linked.name || rec.plasmid_name) + (rec.clone ? ` clone ${rec.clone}` : ''),

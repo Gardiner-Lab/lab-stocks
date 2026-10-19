@@ -28,17 +28,24 @@ def _read(path: str, sql: str, args=()) -> List[sqlite3.Row]:
         return []
 
 
+def _public_column(path: str) -> str:
+    """The editor's "Public" flag, or none (0) in an editor database from before it."""
+    names = {r['name'] for r in _read(path, 'PRAGMA table_info(sequences)')}
+    return 's.public' if 'public' in names else '0 AS public'
+
+
 def plasmids(person: Person, query: str = '', limit: int = 25) -> List[dict]:
     """Plasmids in the editor's library this person may open, best matches first."""
     q = (query or '').strip()
-    rows = _read(os.environ.get('EDITOR_DATABASE_PATH', '/editor/plasmid_editor.db'),
-                 'SELECT s.id, s.name, length(s.sequence) AS length, s.shared, s.confirmed_at, u.username AS owner '
+    path = os.environ.get('EDITOR_DATABASE_PATH', '/editor/plasmid_editor.db')
+    rows = _read(path,
+                 f'SELECT s.id, s.name, length(s.sequence) AS length, {_public_column(path)}, s.confirmed_at, u.username AS owner '
                  'FROM sequences s LEFT JOIN users u ON u.id = s.owner_id '
                  "WHERE (? = '' OR s.name LIKE ?) ORDER BY CASE WHEN s.name LIKE ? THEN 0 ELSE 1 END, "
                  's.updated_at DESC LIMIT 400', (q, f'%{q}%', f'{q}%'))
     found = []
     for r in rows:
-        if person.oversees(r['owner']) or (r['shared'] and person.shares_lab(r['owner'])):
+        if person.oversees(r['owner']) or person.shares_lab(r['owner']) or r['public']:
             found.append({'id': r['id'], 'name': r['name'], 'length': r['length'], 'owner': r['owner'],
                           'confirmed': bool(r['confirmed_at'])})
         if len(found) >= limit:
@@ -49,18 +56,19 @@ def plasmids(person: Person, query: str = '', limit: int = 25) -> List[dict]:
 def plasmid(person: Person, plasmid_id: str) -> dict:
     """
     A plasmid in the editor's library, as a stock links to it: {'state': 'open'}
-    with its id and name when this person may open it, 'private' when it is
-    someone's own (not shared), 'missing' when it is not in the library.
+    with its id and name when this person may open it, 'other_lab' when it is
+    another lab's (not public), 'missing' when it is not in the library.
     """
-    rows = _read(os.environ.get('EDITOR_DATABASE_PATH', '/editor/plasmid_editor.db'),
-                 'SELECT s.id, s.name, s.shared, u.username AS owner FROM sequences s '
+    path = os.environ.get('EDITOR_DATABASE_PATH', '/editor/plasmid_editor.db')
+    rows = _read(path,
+                 f'SELECT s.id, s.name, {_public_column(path)}, u.username AS owner FROM sequences s '
                  'LEFT JOIN users u ON u.id = s.owner_id WHERE s.id = ?', (plasmid_id or '',))
     if not rows:
         return {'state': 'missing'}
     r = rows[0]
-    if person.oversees(r['owner']) or (r['shared'] and person.shares_lab(r['owner'])):
+    if person.oversees(r['owner']) or person.shares_lab(r['owner']) or r['public']:
         return {'state': 'open', 'id': r['id'], 'name': r['name']}
-    return {'state': 'private', 'owner': r['owner']}
+    return {'state': 'other_lab', 'owner': r['owner']}
 
 
 def notebook_mentions(person: Person, code: str) -> List[dict]:

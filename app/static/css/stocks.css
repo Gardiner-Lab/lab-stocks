@@ -185,3 +185,7 @@ ul.plain { list-style: none; padding: 0; margin: .3rem 0; }
 .primer-seq { background: var(--card); border: 1px solid var(--border); border-radius: .5rem; padding: .8rem 1rem; margin-top: 1rem; display: flex; flex-direction: column; gap: .4rem; }
 .primer-seq .btn { margin-left: .6rem; }
 .warn-text { color: #b45309; }
+
+/* the lab new records go to, for someone in several labs */
+.lab-pick { font-size: .85rem; color: var(--muted, #6b7280); margin-left: auto; }
+.lab-picker { font: inherit; margin-left: .3rem; padding: .1rem .3rem; border-radius: .3rem; }

@@ -35,12 +35,34 @@ class NotFound(Exception):
     pass
 
 
-def lab_of(person: Person) -> str:
-    return person.lab or f'user:{person.username}'
+def labs_of(person: Person) -> List[str]:
+    """Every lab whose records this person sees: theirs, or their own without a lab."""
+    names = [m['lab'] for m in person.labs if m.get('lab')] or ([person.lab] if person.lab else [])
+    return names or [f'user:{person.username}']
+
+
+def lab_of(person: Person, chosen: Optional[str] = None, strict: bool = False) -> str:
+    """
+    The lab a new record joins: the one chosen, of theirs, else their first;
+    their own without a lab. strict: a lab chosen that is not theirs is refused.
+    """
+    names = labs_of(person)
+    if chosen:
+        found = next((n for n in names if n.casefold() == str(chosen).strip().casefold()), None)
+        if found:
+            return found
+        if strict:
+            raise ValueError('Choose one of your labs')
+    return names[0]
+
+
+def leads(person: Person, lab: str) -> bool:
+    """Chooses this lab's code: its lead, an admin, or anyone for their own records without a lab."""
+    return person.is_admin or person.leads(lab) or lab.startswith('user:')
 
 
 def can_see(person: Person, row) -> bool:
-    return person.is_admin or (row['lab'] or '').casefold() == lab_of(person).casefold()
+    return person.is_admin or (row['lab'] or '').casefold() in {n.casefold() for n in labs_of(person)}
 
 
 def _text(value: Any, limit: int = 500) -> str:
@@ -106,21 +128,21 @@ def _has_records(conn, lab: str) -> bool:
     return any(conn.execute(f'SELECT 1 FROM {t} WHERE lab = ? LIMIT 1', (lab,)).fetchone() for t in TABLE.values())
 
 
-def lab_info(person: Person) -> dict:
-    lab = lab_of(person)
+def lab_info(person: Person, chosen: Optional[str] = None) -> dict:
+    lab = lab_of(person, chosen)
     with connect() as conn:
         code = lab_code(conn, lab)
         fixed = _has_records(conn, lab)
-    return {'lab': lab, 'code': code, 'fixed': fixed,
-            'can_change': not fixed and (person.is_admin or person.is_lab_lead or lab.startswith('user:'))}
+    return {'lab': lab, 'code': code, 'fixed': fixed, 'labs': labs_of(person),
+            'can_change': not fixed and leads(person, lab)}
 
 
-def set_lab_code(person: Person, code: str) -> dict:
-    lab = lab_of(person)
+def set_lab_code(person: Person, code: str, chosen: Optional[str] = None) -> dict:
+    lab = lab_of(person, chosen, strict=True)
     code = (code or '').strip().upper()
     if not LAB_CODE.fullmatch(code):
         raise ValueError('A lab code is 1 to 6 letters and digits, starting with a letter, e.g. GL')
-    if not (person.is_admin or person.is_lab_lead or lab.startswith('user:')):
+    if not leads(person, lab):
         raise Forbidden("Only the lab's lead or an administrator chooses the lab's code")
     with connect() as conn:
         if _has_records(conn, lab):
@@ -130,7 +152,7 @@ def set_lab_code(person: Person, code: str) -> dict:
         conn.execute('INSERT INTO lab_codes (lab, code, set_by) VALUES (?, ?, ?) ON CONFLICT(lab) DO UPDATE '
                      'SET code = excluded.code, set_by = excluded.set_by, set_at = CURRENT_TIMESTAMP',
                      (lab, code, person.username))
-    return lab_info(person)
+    return lab_info(person, lab)
 
 
 def _code(conn, kind: str, lab: str) -> str:
@@ -274,7 +296,7 @@ def create(person: Person, kind: str, data: dict) -> str:
     fields = (_glycerol_fields if kind == 'glycerol' else _primer_fields)(data, partial=False)
     if kind == 'glycerol':
         fields['source'] = 'sequencing' if data.get('source') == 'sequencing' else 'manual'
-    lab = lab_of(person)
+    lab = lab_of(person, data.get('lab'), strict=True)
     with connect() as conn:
         record_id = secrets.token_hex(12)
         code = _code(conn, kind, lab)

@@ -49,13 +49,13 @@ def me(person):
 @api.get('/lab')
 @signed_in
 def get_lab(person):
-    return jsonify(records.lab_info(person))
+    return jsonify(records.lab_info(person, request.args.get('lab')))
 
 
 @api.put('/lab')
 @signed_in
 def put_lab(person):
-    return jsonify(records.set_lab_code(person, str(_body().get('code') or '')))
+    return jsonify(records.set_lab_code(person, str(_body().get('code') or ''), _body().get('lab')))
 
 
 @api.get('/search')

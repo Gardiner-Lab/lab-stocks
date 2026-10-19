@@ -140,3 +140,28 @@ def test_a_glycerol_stock_is_linked_to_its_plasmid_and_says_when_it_cannot_be_op
     conn.execute("DELETE FROM sequences WHERE id = 'p2'")
     conn.commit()
     assert ana.get(f"/api/glycerol/{made['code']}").get_json()['record']['plasmid'] == {'state': 'missing'}
+
+
+def test_someone_in_two_labs_sees_both_and_chooses_where_new_stocks_go(as_user, world):
+    import sqlite3
+    conn = sqlite3.connect(world['paths']['suite'])
+    conn.executescript("""
+        CREATE TABLE lab_members (username TEXT, lab_id INTEGER, role TEXT, lab_admin INTEGER DEFAULT 0,
+                                  joined_at TEXT, PRIMARY KEY (username, lab_id));
+        INSERT INTO lab_members (username, lab_id, role, joined_at) SELECT username, lab_id, role, '1' FROM members;
+        INSERT INTO lab_members (username, lab_id, role, joined_at) VALUES ('zoe', 1, 'lab_lead', '9');
+    """)
+    conn.commit()
+    ana, zoe = as_user('ana'), as_user('zoe')
+    gardiner = ana.post('/api/glycerol', json={'plasmid_id': 'p1', 'plasmid_name': 'pGreen-35S-GFP'}).get_json()['record']
+    assert zoe.get(f"/api/glycerol/{gardiner['code']}").status_code == 200
+    mine = zoe.post('/api/primers', json={'name': 'oZ1', 'sequence': 'ACGTACGTACGTACGTAC', 'lab': 'Gardiner Lab'})
+    assert mine.status_code == 201 and mine.get_json()['record']['lab'] == 'Gardiner Lab'
+    first = zoe.post('/api/primers', json={'name': 'oZ2', 'sequence': 'ACGTACGTACGTACGTAC'}).get_json()['record']
+    assert first['lab'] == 'Other Lab'
+    assert zoe.post('/api/primers', json={'name': 'x', 'sequence': 'ACGTACGTACGT', 'lab': 'Smith Lab'}).status_code == 400
+    assert zoe.get('/api/lab').get_json()['labs'] == ['Other Lab', 'Gardiner Lab']
+    assert zoe.put('/api/lab', json={'code': 'OTH', 'lab': 'Other Lab'}).status_code == 403
+    # Shared plasmids are seen within the owner's labs: Zoe, now in Gardiner Lab, sees Ana's.
+    assert 'p1' in {p['id'] for p in zoe.get('/api/plasmids').get_json()['plasmids']}
+    assert 'p1' not in {p['id'] for p in as_user('loner').get('/api/plasmids').get_json()['plasmids']}

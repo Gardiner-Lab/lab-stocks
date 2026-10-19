@@ -214,6 +214,8 @@ const App = {
   async init() {
     try {
       this.meta = await api('GET', '/me');
+      this.labPicker(this.meta.lab.labs);
+      await this.loadLab();
     } catch (err) {
       put(document.getElementById('main'), el('p', { class: 'empty' }, err.message));
       return;
@@ -221,6 +223,31 @@ const App = {
     document.body.append(el('datalist', { id: 'hosts' }, HOSTS.map((h) => el('option', { value: h }))));
     window.addEventListener('hashchange', () => this.route());
     this.route();
+  },
+
+  /**
+   * Someone in several labs chooses which one new records go to (their first,
+   * until they choose; remembered on this computer). They see all their labs' records.
+   */
+  chosenLab: null,
+  labPicker(labs) {
+    if (!labs || labs.length < 2) return;
+    let kept = null;
+    try { kept = localStorage.getItem('labChoice'); } catch (e) { /* private window */ }
+    this.chosenLab = labs.includes(kept) ? kept : labs[0];
+    const picker = el('select', { class: 'lab-picker', title: 'New records go to this lab; you see the records of all your labs',
+      'aria-label': 'Lab for new records', onchange: async (e) => {
+        this.chosenLab = e.target.value;
+        try { localStorage.setItem('labChoice', this.chosenLab); } catch (e) { /* private window */ }
+        await this.loadLab();
+        this.route();
+      } }, labs.map((l) => el('option', { value: l, selected: l === this.chosenLab }, l)));
+    document.querySelector('.topbar-user')?.before(el('label', { class: 'lab-pick' }, 'New in ', picker));
+  },
+
+  /** The chosen lab's code, for the line above the lists. */
+  async loadLab() {
+    if (this.chosenLab) this.meta.lab = await api('GET', `/lab?lab=${encodeURIComponent(this.chosenLab)}`);
   },
 
   route() {
@@ -244,7 +271,7 @@ const App = {
         title: 'Choose the lab code',
         intro: 'Every code your lab makes starts with it. Keep it the same as in the Seed Bank. It can be chosen until the lab\'s first stock; after that it is fixed, as codes on labels never change.',
         fields: [{ name: 'code', label: 'Lab code', value: lab.code }],
-        submit: async (v) => { this.meta.lab = await api('PUT', '/lab', v); this.route(); },
+        submit: async (v) => { this.meta.lab = await api('PUT', '/lab', { ...v, lab: lab.lab }); this.route(); },
       }) }, 'Change…') : null);
   },
 
@@ -384,7 +411,7 @@ const App = {
       intro: 'Usually made for you on confirming a plasmid by sequencing in the Plasmid Editor; add one here for stocks made otherwise.',
       fields: this.glycerolFields(null),
       submit: async (v) => {
-        const { record } = await api('POST', '/glycerol', { ...v, plasmid_id: plasmid.id, plasmid_name: plasmid.name });
+        const { record } = await api('POST', '/glycerol', { ...v, plasmid_id: plasmid.id, plasmid_name: plasmid.name, lab: this.chosenLab });
         location.hash = `glycerol=${record.code}`;
         toast(`Made ${record.code}`, 'success');
       },
@@ -444,7 +471,7 @@ const App = {
         { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
       ],
       submit: async (v) => {
-        const res = rec ? await api('PUT', `/primers/${rec.code}`, v) : await api('POST', '/primers', v);
+        const res = rec ? await api('PUT', `/primers/${rec.code}`, v) : await api('POST', '/primers', { ...v, lab: this.chosenLab });
         if (rec) this.reload(); else location.hash = `primer=${res.record.code}`;
       },
     });

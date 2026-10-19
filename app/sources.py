@@ -38,7 +38,7 @@ def plasmids(person: Person, query: str = '', limit: int = 25) -> List[dict]:
                  's.updated_at DESC LIMIT 400', (q, f'%{q}%', f'{q}%'))
     found = []
     for r in rows:
-        if r['shared'] or person.oversees(r['owner']):
+        if person.oversees(r['owner']) or (r['shared'] and person.shares_lab(r['owner'])):
             found.append({'id': r['id'], 'name': r['name'], 'length': r['length'], 'owner': r['owner'],
                           'confirmed': bool(r['confirmed_at'])})
         if len(found) >= limit:
@@ -58,7 +58,7 @@ def plasmid(person: Person, plasmid_id: str) -> dict:
     if not rows:
         return {'state': 'missing'}
     r = rows[0]
-    if r['shared'] or person.oversees(r['owner']):
+    if person.oversees(r['owner']) or (r['shared'] and person.shares_lab(r['owner'])):
         return {'state': 'open', 'id': r['id'], 'name': r['name']}
     return {'state': 'private', 'owner': r['owner']}
 

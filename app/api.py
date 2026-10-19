@@ -6,6 +6,7 @@ from urllib.parse import quote
 from flask import Blueprint, Response, jsonify, request
 
 from app import attachments, oligo, orders, people, records, sources
+from app.db import connect
 
 api = Blueprint('api', __name__)
 PLURAL = {'glycerol': 'glycerol', 'primers': 'primer', 'chemicals': 'chemical', 'antibodies': 'antibody'}
@@ -112,6 +113,12 @@ def create_order(person):
     return jsonify(made), 200 if made['already'] else 201
 
 
+@api.post('/orders/many')
+@signed_in
+def create_orders(person):
+    return jsonify(orders.create_many(person, _body())), 201
+
+
 @api.get('/orders/<order_id>')
 @signed_in
 def get_order(person, order_id):
@@ -128,8 +135,12 @@ def update_order(person, order_id):
 @signed_in
 def list_stock(person, collection):
     kind = _kind(collection)
-    return jsonify({collection: records.list_records(person, kind, request.args.get('q', ''),
-                                                     request.args.get('plasmid', ''))})
+    rows = records.list_records(person, kind, request.args.get('q', ''), request.args.get('plasmid', ''))
+    with connect() as conn:
+        ordered = orders.open_codes(conn)
+    for r in rows:
+        r['on_order'] = r['code'] in ordered
+    return jsonify({collection: rows})
 
 
 @api.post('/<collection>')

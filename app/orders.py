@@ -121,6 +121,25 @@ def _from_record(conn, person: Person, code: str) -> Dict[str, Any]:
                                                rec['host'] and f"raised in {rec['host']}"]))}
 
 
+def create_many(person: Person, data: dict) -> dict:
+    """Several stocks at once (primers ticked in the list), one order each, with the same quantity and note."""
+    codes = [c for c in dict.fromkeys(_text(c, 40).upper() for c in (data.get('records') or [])[:200]) if c]
+    if not codes:
+        raise ValueError('Tick what should be ordered')
+    common = {k: data[k] for k in ('quantity', 'notes', 'urgent') if k in data}
+    made, already = [], []
+    for code in codes:
+        result = create(person, {**common, 'record': code})
+        (already if result['already'] else made).append(result['order'])
+    return {'made': made, 'already': already}
+
+
+def open_codes(conn) -> set:
+    """The stocks with an order still open: marked 🛒 in the lists."""
+    return {r[0] for r in conn.execute("SELECT record_code FROM orders WHERE record_code IS NOT NULL "
+                                       "AND status IN ('requested', 'ordered')")}
+
+
 def _fields(data: dict, partial: bool) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for key, limit in (('item', 300), ('quantity', 120), ('supplier', 120), ('product_number', 120),
@@ -262,7 +281,7 @@ def chemical_status_changed(conn, person: Person, rec, old: str, new: str) -> Op
 
 CSV_COLUMNS = (('id', 'Order'), ('lab', 'Lab'), ('item', 'Item'), ('category', 'Category'), ('quantity', 'Quantity'),
                ('supplier', 'Supplier'), ('product_number', 'Product number'), ('details', 'Details'),
-               ('record_code', 'Stock'), ('link', 'Link'), ('notes', 'Notes'), ('urgent', 'Urgent'),
+               ('record_code', 'Stock'), ('sequence', 'Sequence'), ('link', 'Link'), ('notes', 'Notes'), ('urgent', 'Urgent'),
                ('requested_by', 'Asked by'), ('requested_at', 'Asked on'), ('status', 'Status'),
                ('ordered_by', 'Ordered by'), ('ordered_at', 'Ordered on'))
 
@@ -272,7 +291,12 @@ def as_csv(person: Person, status: str = '', q: str = '') -> str:
     buf = io.StringIO()
     out = csv.writer(buf)
     out.writerow([title for _, title in CSV_COLUMNS])
-    for o in list_orders(person, status, q, limit=100000):
+    found = list_orders(person, status, q, limit=100000)
+    # A primer's sequence on its own, for a supplier's bulk order form.
+    with connect() as conn:
+        sequences = {r['code']: r['sequence'] for r in conn.execute('SELECT code, sequence FROM primers')}
+    for o in found:
+        o['sequence'] = sequences.get(o['record_code'], '') if o['record_kind'] == 'primer' else ''
         cells = []
         for key, _ in CSV_COLUMNS:
             v = o.get(key)

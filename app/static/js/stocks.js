@@ -294,7 +294,19 @@ const App = {
       }[kind] });
     const table = el('div', { class: 'list' });
     const labelBtn = el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([...this.selected]) }, '🏷 Labels for selected');
-    this.onSelection = () => { labelBtn.disabled = !this.selected.size; labelBtn.textContent = `🏷 Labels for selected${this.selected.size ? ` (${this.selected.size})` : ''}`; };
+    // Primers: the ones ticked go on the order list together.
+    const tickedPrimers = () => [...this.selected].filter((c) => /-O-\d+$/.test(c));
+    const orderBtn = kind === 'primer' ? el('button', { class: 'btn btn-secondary', title: 'Put the ticked primers on the order list, one order each',
+      onclick: () => this.orderPrimers(tickedPrimers(), draw) }, '🛒 Add selected to order') : null;
+    this.onSelection = () => {
+      labelBtn.disabled = !this.selected.size;
+      labelBtn.textContent = `🏷 Labels for selected${this.selected.size ? ` (${this.selected.size})` : ''}`;
+      if (orderBtn) {
+        const n = tickedPrimers().length;
+        orderBtn.disabled = !n;
+        orderBtn.textContent = `🛒 Add selected to order${n ? ` (${n})` : ''}`;
+      }
+    };
     const draw = async () => {
       this[`q_${kind}`] = query.value;
       const data = await api('GET', `/${PLURAL[kind]}?q=${encodeURIComponent(query.value)}`);
@@ -307,7 +319,7 @@ const App = {
         el('span', { class: 'actions' },
           el('button', { class: 'btn btn-primary', onclick: () => ({ glycerol: () => this.newGlycerol(), primer: () => this.editPrimer(),
             chemical: () => this.editChemical(), antibody: () => this.editAntibody() })[kind]() },
-          { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical', antibody: '＋ Antibody' }[kind]), labelBtn)),
+          { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical', antibody: '＋ Antibody' }[kind]), orderBtn, labelBtn)),
       this.labCodeLine(),
       el('p', { class: 'hint' }, {
         glycerol: 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the next number.',
@@ -338,12 +350,12 @@ const App = {
     const cells = {
       glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
         r.source === 'sequencing' ? `${r.status} ✓` : r.status],
-      primer: (r) => [r.name, el('span', { class: 'mono' }, r.sequence), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, r.status],
+      primer: (r) => [r.name, el('span', { class: 'mono' }, r.sequence), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, [r.status, this.onOrderMark(r)]],
       chemical: (r) => [r.name, el('span', { class: 'mono' }, r.cas), r.room, r.size,
         r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'),
-        r.status === 'discarded' ? 'discarded' : this.outToggle(r)],
+        [r.status === 'discarded' ? 'discarded' : this.outToggle(r), this.onOrderMark(r)]],
       antibody: (r) => [el('b', {}, r.short_code), r.description, r.type, r.producer, r.host, el('span', { class: 'mono' }, r.product_number),
-        el('span', { class: 'clip', title: r.notes }, r.notes), r.status],
+        el('span', { class: 'clip', title: r.notes }, r.notes), [r.status, this.onOrderMark(r)]],
     }[kind];
     return el('table', { class: 'data' },
       el('thead', {}, el('tr', {}, head.map((h) => el('th', {}, h)))),
@@ -675,6 +687,34 @@ const App = {
     return el('div', { class: 'on-order' }, el('a', { href: '#orders' }, '🛒 On the order list'), ': ',
       o.status === 'ordered' ? `ordered ${localTime(o.ordered_at).slice(0, 10)}, waiting for it to arrive`
         : `asked for by ${o.requested_by || '—'} ${localTime(o.requested_at).slice(0, 10)}${o.auto ? ' (marked out)' : ''}, not ordered yet`);
+  },
+
+  onOrderMark(r) {
+    return r.on_order ? el('span', { class: 'on-order-mark', title: 'On the order list' }, ' 🛒') : null;
+  },
+
+  /** The primers ticked in the list, on the order list at once: one order each, with the same amount and note. */
+  orderPrimers(codes, redraw) {
+    if (!codes.length) { toast('Tick the primers to order', 'error'); return; }
+    formModal({
+      title: `Order ${codes.length} primer${codes.length === 1 ? '' : 's'}`,
+      intro: `${codes.join(', ')} go on the lab's order list, each with its sequence; the lab admin orders them. Primers on the list already are not added again.`,
+      fields: [
+        { name: 'quantity', label: 'How much of each', placeholder: 'e.g. 25 nmol, desalted' },
+        { name: 'notes', label: 'Note for the lab admin', type: 'textarea', placeholder: 'e.g. for the Golden Gate assembly' },
+        { name: 'urgent', label: 'Urgent', type: 'checkbox' },
+      ],
+      label: '🛒 Add to order',
+      submit: async (v) => {
+        const res = await api('POST', '/orders/many', { ...v, records: codes });
+        const n = res.made.length;
+        toast(`${n} primer${n === 1 ? '' : 's'} on the order list${res.already.length ? `; ${res.already.length} already ${res.already.length === 1 ? 'was' : 'were'}` : ''}`, 'success', 4000);
+        for (const c of codes) this.selected.delete(c);
+        this.refreshWaiting();
+        await redraw();
+        this.onSelection?.();
+      },
+    });
   },
 
   /** Put a chemical, primer or antibody on the order list: its details go along. */

@@ -27,12 +27,14 @@ The Gardiner Lab suite's glycerol stocks, primers, chemicals and antibodies.
 - **Orders**: the lab's order list.
   - Anyone in a lab asks for something with the order request form (an enzyme, a kit, tips), or
     with 🛒 Add to order on a chemical, primer or antibody, whose details (CAS number, sequence,
-    producer and product number) go along. A chemical switched to Out is added by itself, and taken
+    producer and product number) go along. Primers ticked in their list are added all at once with
+    🛒 Add selected to order, one order each. A chemical switched to Out is added by itself, and taken
     off again if it is switched back before it is ordered.
   - The lab's **lab admins** (a role set in the suite) see the lab's orders, and no other lab's; the
     Orders tab shows how many wait. They mark each ordered, then received, or cancel it. When an
     order for a stock that had run out arrives, the stock is back in stock. The orders shown can be
-    downloaded as a spreadsheet for a supplier's order form.
+    downloaded as a spreadsheet for a supplier's order form, with each primer's sequence in a column
+    of its own. Stocks on the order list are marked 🛒 in their lists.
   - Everyone else sees their own requests and how far each has got, and can change or cancel one
     until it is ordered.
 - **Shared with the other tools:**

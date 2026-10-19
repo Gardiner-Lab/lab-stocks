@@ -72,6 +72,16 @@ def test_order_requests_reach_their_labs_lab_admin(as_user, world):
     # A spreadsheet of them, for the supplier's form.
     sheet = lead.get('/api/orders.csv?status=open').get_data(as_text=True)
     assert 'M0530S' in sheet and 'Tips' not in sheet and 'M13 fwd' not in sheet
+    # Primers ticked in the list, all at once: one order each, none twice.
+    _ok(ben.post('/api/primers', json={'name': 'M13 rev', 'sequence': 'CAGGAAACAGCTATGAC'}), 201)
+    bulk = _ok(ana.post('/api/orders/many', json={'records': ['GARD-O-0001', 'gard-o-0002', 'GARD-O-0002'],
+                                                  'quantity': '25 nmol'}), 201)
+    assert [o['item'] for o in bulk['made']] == ['M13 fwd', 'M13 rev'] and bulk['already'] == []
+    assert {o['quantity'] for o in bulk['made']} == {'25 nmol'}
+    assert _ok(ana.post('/api/orders/many', json={'records': ['GARD-O-0002']}), 201)['already'][0]['item'] == 'M13 rev'
+    assert ana.post('/api/orders/many', json={'records': []}).status_code == 400
+    assert [p['on_order'] for p in _ok(ana.get('/api/primers'))['primers']] == [True, True]
+    assert 'CAGGAAACAGCTATGAC' in lead.get('/api/orders.csv?status=requested').get_data(as_text=True)
     history = _ok(lead.get(f"/api/orders/{taq['id']}"))['order']['changes']
     assert any("'requested' → 'ordered'" in c['what'] for c in history)
 

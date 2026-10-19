@@ -17,11 +17,13 @@ and the project uses [semantic versioning](https://semver.org/).
   primary, secondary or other, producer, source animal, product number and notes about the use,
   with status, photos and files, labels and links from the Lab Notebook.
 - **Orders**, the lab's order list. Anyone in a lab asks for something with ＋ Order request, or with
-  🛒 Add to order on a chemical, primer or antibody (its details go along, and it is not added twice).
+  🛒 Add to order on a chemical, primer or antibody (its details go along, and it is not added twice),
+  or, for primers, by ticking them in the list and 🛒 Add selected to order.
   A chemical switched to Out is added by itself. The lab's lab admins see that lab's orders only,
   with the number waiting on the Orders tab, and mark each ordered, received or cancelled; a stock
   that had run out is in stock again when its order is received. The list downloads as a
-  spreadsheet. Others see their own requests, and can change or cancel them until they are ordered.
+  spreadsheet, with primers' sequences in a column of their own. Stocks on order are marked 🛒 in
+  their lists. Others see their own requests, and can change or cancel them until they are ordered.
 
 ## [0.2.0] - 2026-10-19
 

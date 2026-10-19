@@ -556,10 +556,13 @@ const App = {
       const status = box.checked ? 'out' : 'in stock';
       try {
         await api('PUT', `/chemicals/${rec.code}`, { status });
-        rec.status = status;
-        toast(`${rec.name}: ${status === 'out' ? 'marked as out' : 'back in stock'}`, 'success', 2500);
-        this.reload();
-      } catch (err) { box.checked = !box.checked; toast(`Not changed: ${err.message}`, 'error', 6000); }
+      } catch (err) { box.checked = !box.checked; toast(`Not changed: ${err.message}`, 'error', 6000); return; }
+      rec.status = status;
+      toast(`${rec.name}: ${status === 'out' ? 'marked as out' : 'back in stock'}`, 'success', 2500);
+      // In the list: grey its row; on its page: show it again.
+      const row = box.closest('tr');
+      if (row) row.classList.toggle('faded', status !== 'in stock');
+      else this.reload();
     } });
     return el('label', { class: 'switch', title: 'Out: it has run out and needs ordering', onclick: (e) => e.stopPropagation() },
       box, el('span', { class: 'slider' }), el('span', { class: 'switch-label' }, 'Out'));

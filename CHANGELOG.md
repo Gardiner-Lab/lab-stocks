@@ -5,6 +5,12 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- People can be in several labs: they see the stocks of all of them, and choose which lab a new stock
+  goes to (a picker at the top, for someone in more than one; their first lab until they choose). A
+  lab's code is chosen by that lab's lead.
+- Plasmids follow the Plasmid Editor: shared within the owner's labs.
+
 ## [0.1.2] - 2026-10-16
 
 ### Added

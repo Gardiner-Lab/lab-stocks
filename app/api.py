@@ -8,7 +8,7 @@ from flask import Blueprint, Response, jsonify, request
 from app import attachments, oligo, people, records, sources
 
 api = Blueprint('api', __name__)
-PLURAL = {'glycerol': 'glycerol', 'primers': 'primer'}
+PLURAL = {'glycerol': 'glycerol', 'primers': 'primer', 'chemicals': 'chemical'}
 
 
 def signed_in(view):
@@ -130,7 +130,9 @@ def delete_stock(person, collection, ident):
 @signed_in
 def add_attachments(person, collection, ident):
     files = [(f.filename or 'file', f.read(attachments.MAX_BYTES + 1)) for f in request.files.getlist('file')]
-    return jsonify({'attachments': attachments.add(person, _kind(collection), ident, files)}), 201
+    # A chemical's safety data sheet is sent captioned SDS.
+    caption = records.SDS if request.form.get('caption') == records.SDS else ''
+    return jsonify({'attachments': attachments.add(person, _kind(collection), ident, files, caption)}), 201
 
 
 @api.get('/attachments/<att_id>')

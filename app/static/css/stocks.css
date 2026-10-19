@@ -189,3 +189,7 @@ ul.plain { list-style: none; padding: 0; margin: .3rem 0; }
 /* the lab new records go to, for someone in several labs */
 .lab-pick { font-size: .85rem; color: var(--muted, #6b7280); margin-left: auto; }
 .lab-picker { font: inherit; margin-left: .3rem; padding: .1rem .3rem; border-radius: .3rem; }
+
+/* a chemical's safety data sheet and where to look it up */
+.sds { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.safety-links { display: inline-flex; flex-wrap: wrap; gap: .4rem; vertical-align: middle; }

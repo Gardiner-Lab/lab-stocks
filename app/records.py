@@ -1,13 +1,13 @@
 """
-Glycerol stocks and primers: making, changing, finding them, and who sees what.
+Glycerol stocks, primers and chemicals: making, changing, finding them, and who sees what.
 
 A record belongs to the lab of whoever made it. Everyone in that lab sees and
 changes it; other labs do not see it at all; administrators see all. Every
 change is logged.
 
 Codes start with the lab's code (the same as in the Seed Bank, when the lab has
-one there), then G for a glycerol stock or O for an oligo (primer), then the
-lab's own number: GL-G-0042, GL-O-0007.
+one there), then G for a glycerol stock, O for an oligo (primer) or C for a
+chemical, then the lab's own number: GL-G-0042, GL-O-0007, GL-C-0003.
 """
 
 import os
@@ -20,8 +20,11 @@ from app import oligo
 from app.db import connect
 from app.people import Person
 
-KINDS = {'glycerol': 'G', 'primer': 'O'}
-TABLE = {'glycerol': 'glycerol', 'primer': 'primers'}
+KINDS = {'glycerol': 'G', 'primer': 'O', 'chemical': 'C'}
+TABLE = {'glycerol': 'glycerol', 'primer': 'primers', 'chemical': 'chemicals'}
+NAMES = {'glycerol': 'glycerol stock', 'primer': 'primer', 'chemical': 'chemical'}
+CAS = re.compile(r'(\d{2,7})-(\d{2})-(\d)')
+SDS = 'SDS'                 # the caption of a chemical's safety data sheet
 STATUS = ('in stock', 'used up', 'discarded')
 DIRECTIONS = ('', 'forward', 'reverse')
 LAB_CODE = re.compile(r'[A-Z][A-Z0-9]{0,5}')
@@ -75,6 +78,20 @@ def _date(value: Any) -> Optional[str]:
         return None
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', v):
         raise ValueError('Dates are written YYYY-MM-DD')
+    return v
+
+
+def cas_number(value: Any) -> str:
+    """A CAS registry number, checked: 2-7 digits, 2 digits, and the check digit (e.g. 64-17-5)."""
+    v = re.sub(r'\s', '', _text(value, 20))
+    if not v:
+        return ''
+    m = CAS.fullmatch(v)
+    if not m:
+        raise ValueError('A CAS number is written like 64-17-5: 2 to 7 digits, 2 digits, and a check digit')
+    digits = (m.group(1) + m.group(2))[::-1]
+    if sum((i + 1) * int(d) for i, d in enumerate(digits)) % 10 != int(m.group(3)):
+        raise ValueError(f'{v} is not a valid CAS number: its check digit does not match (a typing error?)')
     return v
 
 
@@ -164,8 +181,8 @@ def _code(conn, kind: str, lab: str) -> str:
 
 
 def kind_of(code: str) -> Optional[str]:
-    m = re.fullmatch(r'[A-Z][A-Z0-9]{0,5}-([GO])-\d+', (code or '').strip().upper())
-    return {'G': 'glycerol', 'O': 'primer'}[m.group(1)] if m else None
+    m = re.fullmatch(r'[A-Z][A-Z0-9]{0,5}-([GOC])-\d+', (code or '').strip().upper())
+    return {'G': 'glycerol', 'O': 'primer', 'C': 'chemical'}[m.group(1)] if m else None
 
 
 # --- reading ---------------------------------------------------------------------
@@ -174,14 +191,14 @@ def _row(conn, kind: str, ident: str):
     row = conn.execute(f'SELECT * FROM {TABLE[kind]} WHERE (id = ? OR code = ?) AND deleted_at IS NULL',
                        (ident, (ident or '').strip().upper())).fetchone()
     if row is None:
-        raise NotFound('No such glycerol stock' if kind == 'glycerol' else 'No such primer')
+        raise NotFound(f'No such {NAMES[kind]}')
     return row
 
 
 def visible(conn, person: Person, kind: str, ident: str):
     row = _row(conn, kind, ident)
     if not can_see(person, row):
-        raise NotFound('No such glycerol stock' if kind == 'glycerol' else 'No such primer')
+        raise NotFound(f'No such {NAMES[kind]}')
     return row
 
 
@@ -199,6 +216,9 @@ def detail(person: Person, kind: str, ident: str) -> dict:
         row = visible(conn, person, kind, ident)
         out = _out(kind, row)
         out['attachments'] = attachments.listed(conn, kind, row['id'])
+        if kind == 'chemical':
+            # Its safety data sheet: the latest file captioned SDS.
+            out['sds'] = next((a for a in reversed(out['attachments']) if a['caption'] == SDS), None)
         out['changes'] = [dict(r) for r in conn.execute(
             'SELECT changed_by, changed_at, what FROM changes WHERE record_kind = ? AND record_id = ? '
             'ORDER BY rowid DESC LIMIT 200', (kind, row['id']))]
@@ -217,6 +237,14 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
     q = (q or '').strip()
     like = f'%{q}%'
     with connect() as conn:
+        if kind == 'chemical':
+            sql = ("SELECT c.*, EXISTS (SELECT 1 FROM attachments a WHERE a.record_kind = 'chemical' AND "
+                   'a.record_id = c.id AND a.caption = ? AND a.deleted_at IS NULL) AS has_sds FROM chemicals c '
+                   'WHERE c.deleted_at IS NULL AND (c.code LIKE ? OR c.name LIKE ? OR c.cas LIKE ? OR c.room LIKE ? '
+                   'OR c.size LIKE ? OR c.notes LIKE ?)')
+            args = [SDS] + [like] * 6
+            rows = conn.execute(sql + ' ORDER BY c.name COLLATE NOCASE, c.rowid', args).fetchall()
+            return [_out(kind, r) for r in rows if can_see(person, r)][:limit]
         if kind == 'glycerol':
             sql = ('SELECT * FROM glycerol WHERE deleted_at IS NULL AND (code LIKE ? OR plasmid_name LIKE ? OR clone LIKE ? '
                    'OR host LIKE ? OR selection LIKE ? OR location LIKE ? OR notes LIKE ?)')
@@ -292,8 +320,30 @@ def _primer_fields(data: dict, partial: bool) -> Dict[str, Any]:
     return out
 
 
+def _chemical_fields(data: dict, partial: bool) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if 'name' in data or not partial:
+        out['name'] = _text(data.get('name'), 200)
+        if not out['name']:
+            raise ValueError('A chemical needs a name')
+    if 'cas' in data or not partial:
+        out['cas'] = cas_number(data.get('cas'))
+    for key, limit in (('room', 120), ('size', 60), ('notes', 5000)):
+        if key in data or not partial:
+            out[key] = _text(data.get(key), limit)
+    if 'status' in data or not partial:
+        s = _text(data.get('status')) or 'in stock'
+        if s not in STATUS:
+            raise ValueError(f'status must be one of {", ".join(STATUS)}')
+        out['status'] = s
+    return out
+
+
+FIELDS = {'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _chemical_fields}
+
+
 def create(person: Person, kind: str, data: dict) -> str:
-    fields = (_glycerol_fields if kind == 'glycerol' else _primer_fields)(data, partial=False)
+    fields = FIELDS[kind](data, partial=False)
     if kind == 'glycerol':
         fields['source'] = 'sequencing' if data.get('source') == 'sequencing' else 'manual'
     lab = lab_of(person, data.get('lab'), strict=True)
@@ -309,7 +359,7 @@ def create(person: Person, kind: str, data: dict) -> str:
 
 
 def update(person: Person, kind: str, ident: str, data: dict) -> None:
-    fields = (_glycerol_fields if kind == 'glycerol' else _primer_fields)(data, partial=True)
+    fields = FIELDS[kind](data, partial=True)
     if kind == 'glycerol' and fields.get('plasmid_id'):
         # Linked to a plasmid of the editor's library: one this person may open, named as it is there.
         from app import sources

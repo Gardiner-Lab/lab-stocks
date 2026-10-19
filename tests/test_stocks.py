@@ -175,3 +175,45 @@ def test_someone_in_two_labs_sees_both_and_chooses_where_new_stocks_go(as_user, 
     # Shared plasmids are seen within the owner's labs: Zoe, now in Gardiner Lab, sees Ana's.
     assert 'p1' in {p['id'] for p in zoe.get('/api/plasmids').get_json()['plasmids']}
     assert 'p1' not in {p['id'] for p in as_user('loner').get('/api/plasmids').get_json()['plasmids']}
+
+
+PDF = b'%PDF-1.4\n' + b'\x00' * 64
+
+
+def test_chemicals_with_their_cas_number_and_safety_data_sheet(as_user):
+    ana, ben, zoe = as_user('ana'), as_user('ben'), as_user('zoe')
+    made = _ok(ana.post('/api/chemicals', json={'name': 'Ethanol absolute', 'cas': ' 64-17-5 ', 'room': 'O.703',
+                                                 'size': '2.5 L'}), 201)['record']
+    assert made['code'] == 'GARD-C-0001' and made['cas'] == '64-17-5' and made['sds'] is None
+    # CAS numbers are checked, check digit too; one may be left out.
+    assert 'check digit' in ana.post('/api/chemicals', json={'name': 'Typo', 'cas': '64-17-6'}).get_json()['error']
+    assert ana.post('/api/chemicals', json={'name': 'Odd', 'cas': '6417-5'}).status_code == 400
+    assert ana.post('/api/chemicals', json={'cas': '7732-18-5'}).status_code == 400, 'it needs a name'
+    _ok(ana.post('/api/chemicals', json={'name': 'agarose'}), 201)
+    # Listed by name; found by CAS number or room; the lab's, not another lab's.
+    assert [c['name'] for c in _ok(ben.get('/api/chemicals'))['chemicals']] == ['agarose', 'Ethanol absolute']
+    assert [c['code'] for c in _ok(ben.get('/api/chemicals?q=64-17'))['chemicals']] == ['GARD-C-0001']
+    assert _ok(zoe.get('/api/chemicals'))['chemicals'] == []
+    assert zoe.get('/api/chemicals/GARD-C-0001').status_code == 404
+    # Its safety data sheet: a PDF captioned SDS, shown apart from its other files and marked in the list.
+    _ok(ana.post('/api/chemicals/GARD-C-0001/attachments', content_type='multipart/form-data',
+                 data={'file': [(io.BytesIO(PNG), 'bottle.png')]}), 201)
+    _ok(ben.post('/api/chemicals/GARD-C-0001/attachments', content_type='multipart/form-data',
+                 data={'file': [(io.BytesIO(PDF), 'ethanol-sds.pdf')], 'caption': 'SDS'}), 201)
+    rec = _ok(ana.get('/api/chemicals/GARD-C-0001'))['record']
+    assert rec['sds']['filename'] == 'ethanol-sds.pdf' and rec['sds']['preview']
+    assert {c['code']: c['has_sds'] for c in _ok(ana.get('/api/chemicals'))['chemicals']} == {'GARD-C-0001': 1, 'GARD-C-0002': 0}
+    assert zoe.get(f"/api/attachments/{rec['sds']['id']}").status_code == 404
+    # Edited, logged; a code like any other stock's.
+    _ok(ana.put('/api/chemicals/GARD-C-0001', json={'room': 'O.705', 'status': 'used up'}))
+    assert "room: 'O.703' → 'O.705'" in _ok(ana.get('/api/chemicals/GARD-C-0001'))['record']['changes'][0]['what']
+    assert ana.put('/api/chemicals/GARD-C-0001', json={'cas': '1-2-3'}).status_code == 400
+    from app import records
+    assert records.kind_of('gard-c-0001') == 'chemical'
+    # Not offered to the notebook's links, which know glycerol stocks and primers only.
+    assert all(r['kind'] != 'chemical' for r in _ok(ana.get('/api/search?q=Ethanol'))['results'])
+
+
+def test_the_page_links_to_the_safety_registers(as_user):
+    page = as_user('ana').get('/').get_data(as_text=True)
+    assert 'uusofos.itis.software' in page and 'chemwatch' in page and 'data-view="chemicals"' in page

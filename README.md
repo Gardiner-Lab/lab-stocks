@@ -1,6 +1,6 @@
 # Lab Stocks
 
-The Gardiner Lab suite's glycerol stocks and primers.
+The Gardiner Lab suite's glycerol stocks, primers and chemicals.
 
 - **Glycerol stocks** are numbered per lab: `GL-G-0042`.
   - Each is linked to the plasmid it holds in the Plasmid Editor's library, and records the clone,
@@ -14,6 +14,11 @@ The Gardiner Lab suite's glycerol stocks and primers.
   - Primers can be searched by name or by any piece of their sequence.
   - Primers designed in the editor are saved here with one click, and the editor lists the lab's
     primers that bind a plasmid.
+- **Chemicals** are numbered `GL-C-0003`.
+  - Each records its name, CAS number (its check digit is checked), the room it is kept in, its size
+    and status.
+  - A chemical's page holds its safety data sheet (SDS, a PDF), and links to the university's
+    hazardous substances register (SOFOS) and to Chemwatch, with its CAS number ready to copy.
 - **Shared with the other tools:**
   - storage, labels with QR codes, photos and files;
   - links from the Lab Notebook (`@`), with the pages that mention each stock.
@@ -34,6 +39,8 @@ It runs inside the [Gardiner Lab suite](https://github.com/Gardiner-Lab/gardiner
 | `NOTEBOOK_DATABASE_PATH` | `/notebook/notebook.db` | notebook links (read only) |
 | `SEEDS_DATABASE_PATH` | `/seeds/seeds.db` | the lab codes chosen in the Seed Bank (read only) |
 | `SUITE_PUBLIC_URL` | (the page's own address) | where phones reach the suite, for label QR codes |
+| `SOFOS_URL` | UU's SOFOS information portal | the hazardous substances register chemicals link to |
+| `CHEMWATCH_URL` | `https://jr.chemwatch.net/chemwatch.web/` | Chemwatch, which chemicals link to |
 
 ## Licence
 

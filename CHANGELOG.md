@@ -5,6 +5,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Chemicals**, a third list beside glycerol stocks and primers: name, CAS number (its check digit
+  is checked), room, size, status and notes, numbered like the others (`GL-C-0003`) and on labels.
+  A chemical's page holds its safety data sheet (a PDF, marked 📕 in the list) and links to the
+  university's SOFOS register and to Chemwatch, with the CAS number ready to copy. The links can be
+  changed with `SOFOS_URL` and `CHEMWATCH_URL`.
+
 ## [0.2.0] - 2026-10-19
 
 ### Changed

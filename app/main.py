@@ -1,5 +1,5 @@
 """
-Lab Stocks: the Gardiner Lab suite's glycerol stocks and primers.
+Lab Stocks: the Gardiner Lab suite's glycerol stocks, primers and chemicals.
 
 Glycerol stocks, numbered per lab and linked to the plasmid they hold (made
 when a plasmid is confirmed by sequencing in the Plasmid Editor); primers with
@@ -12,6 +12,9 @@ import os
 from flask import Flask, redirect, render_template, request
 
 APP_VERSION = '0.2.0'
+SOFOS_URL = ('https://uusofos.itis.software/default.aspx#ViewID=BOInformationPortal_ListView'
+             '&ObjectClassName=GROS.Module.ExtensionModules.Intranet.BOInformationPortal')
+CHEMWATCH_URL = 'https://jr.chemwatch.net/chemwatch.web/'
 
 
 class PrefixMiddleware:
@@ -47,6 +50,9 @@ def create_app() -> Flask:
             # Where phones reach the suite, for the codes on labels; unset, the
             # address the label page was opened at.
             'public': os.environ.get('SUITE_PUBLIC_URL', '').rstrip('/'),
+            # Chemical safety: the university's hazardous substances register, and Chemwatch.
+            'sofos': os.environ.get('SOFOS_URL', SOFOS_URL),
+            'chemwatch': os.environ.get('CHEMWATCH_URL', CHEMWATCH_URL),
         }
 
     def page(template: str):

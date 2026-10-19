@@ -1,12 +1,15 @@
 """
-Lab Stocks' database: glycerol stocks and primers, each lab's own.
+Lab Stocks' database: glycerol stocks, primers and chemicals, each lab's own.
 
     glycerol   a frozen culture holding a plasmid: which plasmid (from the Plasmid
                Editor), which clone, in which strain, where it is kept
     primers    an oligonucleotide: its sequence, what it is for, where the tube is
+    chemicals  a chemical the lab keeps: its name, CAS number, room and size;
+               its safety data sheet is a file on it captioned SDS
     attachments, changes, counters, lab_codes   as in the Seed Bank
 
-Codes start with the lab's code: GL-G-0042 a glycerol stock, GL-O-0007 a primer.
+Codes start with the lab's code: GL-G-0042 a glycerol stock, GL-O-0007 a primer,
+GL-C-0003 a chemical.
 """
 
 import os
@@ -58,6 +61,23 @@ CREATE TABLE IF NOT EXISTS primers (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS chemicals (
+    id TEXT PRIMARY KEY,
+    code TEXT UNIQUE NOT NULL,
+    lab TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cas TEXT NOT NULL DEFAULT '',
+    room TEXT NOT NULL DEFAULT '',
+    size TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'in stock',
+    notes TEXT NOT NULL DEFAULT '',
+    created_by TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_chemicals_cas ON chemicals(cas);
 
 CREATE TABLE IF NOT EXISTS attachments (
     id TEXT PRIMARY KEY,

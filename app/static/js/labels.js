@@ -5,7 +5,8 @@
  */
 
 const SB = window.ST;
-const KIND = { G: 'glycerol', O: 'primer' };
+const KIND = { G: 'glycerol', O: 'primer', C: 'chemical' };
+const PATH = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals' };
 // GL-G-0001, GL-O-0001: the letter before the number says what it is.
 const kindOf = (code) => KIND[code.split('-').slice(-2, -1)[0]];
 
@@ -35,10 +36,12 @@ function qr(text) {
 
 function label(rec) {
   const target = `${publicBase()}/#${rec.kind}=${rec.code}`;
-  const lines = rec.kind === 'glycerol'
-    ? [`${rec.plasmid_name}${rec.clone ? ` clone ${rec.clone}` : ''}`, [rec.host, rec.selection].filter(Boolean).join(' · '),
-      [rec.made_on, rec.location].filter(Boolean).join(' · ')]
-    : [rec.name, rec.sequence, [`${rec.length} nt`, rec.tm !== null ? `Tm ${rec.tm} °C` : '', rec.location].filter(Boolean).join(' · ')];
+  const lines = {
+    glycerol: () => [`${rec.plasmid_name}${rec.clone ? ` clone ${rec.clone}` : ''}`, [rec.host, rec.selection].filter(Boolean).join(' · '),
+      [rec.made_on, rec.location].filter(Boolean).join(' · ')],
+    primer: () => [rec.name, rec.sequence, [`${rec.length} nt`, rec.tm !== null ? `Tm ${rec.tm} °C` : '', rec.location].filter(Boolean).join(' · ')],
+    chemical: () => [rec.name, rec.cas ? `CAS ${rec.cas}` : '', [rec.size, rec.room].filter(Boolean).join(' · ')],
+  }[rec.kind]();
   return el('div', { class: `label label-${rec.kind}` }, qr(target),
     el('div', { class: 'label-text' }, el('div', { class: 'label-code' }, rec.code),
       lines.filter(Boolean).map((t) => el('div', { class: 'label-line' }, t))));
@@ -56,7 +59,7 @@ async function main() {
     const kind = kindOf(code);
     if (!kind) continue;
     try {
-      const res = await fetch(`${ST.base}/api/${kind === 'glycerol' ? 'glycerol' : 'primers'}/${encodeURIComponent(code)}`, { credentials: 'same-origin' });
+      const res = await fetch(`${ST.base}/api/${PATH[kind]}/${encodeURIComponent(code)}`, { credentials: 'same-origin' });
       const data = await res.json();
       sheet.append(res.ok ? label(data.record) : el('div', { class: 'label label-missing' }, `${code}: ${data.error || 'not found'}`));
     } catch (err) {

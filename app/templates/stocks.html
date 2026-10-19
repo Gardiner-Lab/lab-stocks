@@ -14,6 +14,7 @@
     <nav class="view-tabs">
         <a class="view-tab" data-view="glycerol" href="#glycerol">Glycerol stocks</a>
         <a class="view-tab" data-view="primers" href="#primers">Primers</a>
+        <a class="view-tab" data-view="chemicals" href="#chemicals">Chemicals</a>
     </nav>
     <nav class="topbar-nav">
         <a href="{{ links.editor }}/editor" target="_blank" rel="noopener">Plasmid Editor ↗</a>
@@ -30,6 +31,8 @@
         base: {{ request.script_root | tojson }},
         editor: {{ links.editor | tojson }},
         notebook: {{ links.notebook | tojson }},
+        sofos: {{ links.sofos | tojson }},
+        chemwatch: {{ links.chemwatch | tojson }},
         person: {{ person.to_dict() | tojson }},
     };
 </script>

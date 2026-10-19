@@ -1,7 +1,8 @@
 'use strict';
 /*
- * The Lab Stocks page: glycerol stocks and primers, a list of each and a page
- * for each record. Addresses: #glycerol, #primers, #glycerol=GL-G-0001, #primer=GL-O-0001.
+ * The Lab Stocks page: glycerol stocks, primers and chemicals, a list of each and
+ * a page for each record. Addresses: #glycerol, #primers, #chemicals,
+ * #glycerol=GL-G-0001, #primer=GL-O-0001, #chemical=GL-C-0001.
  */
 
 const ST = window.ST;
@@ -197,9 +198,12 @@ function localTime(stamp) {
 
 
 const today = () => new Date().toISOString().slice(0, 10);
-const ICON = { glycerol: '🧫', primer: '🧬' };
-const NAME = { glycerol: 'glycerol stock', primer: 'primer' };
-const PLURAL = { glycerol: 'glycerol', primer: 'primers' };
+const ICON = { glycerol: '🧫', primer: '🧬', chemical: '⚗️' };
+const NAME = { glycerol: 'glycerol stock', primer: 'primer', chemical: 'chemical' };
+const PLURAL = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals' };
+const SINGULAR = { glycerol: 'glycerol', primers: 'primer', chemicals: 'chemical' };
+const TITLE = { glycerol: '🧫 Glycerol stocks', primer: '🧬 Primers', chemical: '⚗️ Chemicals' };
+const SDS = 'SDS';
 const FILE_ICONS = { pdf: '📕', word: '📝', powerpoint: '📽️', excel: '📊', archive: '🗜️', sequence: '🧬', text: '📄', image: '🖼️', file: '📎' };
 const fileUrl = (id, download = false) => url(`/api/attachments/${encodeURIComponent(id)}${download ? '?download' : ''}`);
 const sizeLabel = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
@@ -252,12 +256,12 @@ const App = {
 
   route() {
     const hash = location.hash.slice(1) || 'glycerol';
-    const record = hash.match(/^(glycerol|primer)=(.+)$/);
+    const record = hash.match(/^(glycerol|primer|chemical)=(.+)$/);
     for (const tab of document.querySelectorAll('.view-tab')) {
       tab.classList.toggle('active', tab.dataset.view === (record ? PLURAL[record[1]] : hash));
     }
     if (record) this.showRecord(record[1], decodeURIComponent(record[2]));
-    else this.showList(hash === 'primers' ? 'primer' : 'glycerol');
+    else this.showList(SINGULAR[hash] || 'glycerol');
   },
 
   /* lists -------------------------------------------------------------------------- */
@@ -266,7 +270,7 @@ const App = {
     const lab = this.meta.lab;
     return el('p', { class: 'lab-code-line' },
       'Codes in ', el('b', {}, lab.lab.startsWith('user:') ? 'your own stocks' : lab.lab), ' start with ',
-      el('span', { class: 'code-badge' }, `${lab.code}-`), ` (${lab.code}-G glycerol stocks, ${lab.code}-O primers)`,
+      el('span', { class: 'code-badge' }, `${lab.code}-`), ` (${lab.code}-G glycerol stocks, ${lab.code}-O primers, ${lab.code}-C chemicals)`,
       lab.can_change ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.6rem', onclick: () => formModal({
         title: 'Choose the lab code',
         intro: 'Every code your lab makes starts with it. Keep it the same as in the Seed Bank. It can be chosen until the lab\'s first stock; after that it is fixed, as codes on labels never change.',
@@ -278,8 +282,11 @@ const App = {
   async showList(kind) {
     const main = document.getElementById('main');
     const query = el('input', { type: 'search', class: 'list-search', value: this[`q_${kind}`] || '',
-      placeholder: kind === 'glycerol' ? 'Search by code, plasmid, clone, strain, selection or place'
-        : 'Search by code, name, target, place, or a piece of the sequence (e.g. GGCCAGT)' });
+      placeholder: {
+        glycerol: 'Search by code, plasmid, clone, strain, selection or place',
+        primer: 'Search by code, name, target, place, or a piece of the sequence (e.g. GGCCAGT)',
+        chemical: 'Search by code, name, CAS number, room or size',
+      }[kind] });
     const table = el('div', { class: 'list' });
     const labelBtn = el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([...this.selected]) }, '🏷 Labels for selected');
     this.onSelection = () => { labelBtn.disabled = !this.selected.size; labelBtn.textContent = `🏷 Labels for selected${this.selected.size ? ` (${this.selected.size})` : ''}`; };
@@ -291,14 +298,17 @@ const App = {
     let timer;
     query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
     put(main,
-      el('div', { class: 'page-head' }, el('h1', {}, kind === 'glycerol' ? '🧫 Glycerol stocks' : '🧬 Primers'),
+      el('div', { class: 'page-head' }, el('h1', {}, TITLE[kind]),
         el('span', { class: 'actions' },
-          el('button', { class: 'btn btn-primary', onclick: () => (kind === 'glycerol' ? this.newGlycerol() : this.editPrimer()) },
-            kind === 'glycerol' ? '＋ Glycerol stock' : '＋ Primer'), labelBtn)),
+          el('button', { class: 'btn btn-primary', onclick: () => ({ glycerol: () => this.newGlycerol(), primer: () => this.editPrimer(),
+            chemical: () => this.editChemical() })[kind]() },
+          { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical' }[kind]), labelBtn)),
       this.labCodeLine(),
-      el('p', { class: 'hint' }, kind === 'glycerol'
-        ? 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the next number.'
-        : 'The lab\'s oligos, with where each tube is. Primers designed in the Plasmid Editor can be saved here, and the editor shows which of them bind a plasmid.'),
+      el('p', { class: 'hint' }, {
+        glycerol: 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the next number.',
+        primer: 'The lab\'s oligos, with where each tube is. Primers designed in the Plasmid Editor can be saved here, and the editor shows which of them bind a plasmid.',
+        chemical: 'The lab\'s chemicals, with the room each is kept in. Open one to add its safety data sheet (SDS).',
+      }[kind], kind === 'chemical' ? this.safetyLinks() : null),
       query, table);
     await draw();
     this.onSelection();
@@ -313,13 +323,18 @@ const App = {
 
   listTable(kind, rows) {
     if (!rows.length) return el('p', { class: 'empty' }, 'Nothing here yet.');
-    const head = kind === 'glycerol'
-      ? ['', 'Code', 'Plasmid', 'Clone', 'Strain', 'Selection', 'Kept in', 'Made', 'Status']
-      : ['', 'Code', 'Name', 'Sequence (5′→3′)', 'nt', 'Tm', 'Kept in', 'Status'];
-    const cells = kind === 'glycerol'
-      ? (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
-        r.source === 'sequencing' ? `${r.status} ✓` : r.status]
-      : (r) => [r.name, el('span', { class: 'mono' }, r.sequence), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, r.status];
+    const head = {
+      glycerol: ['', 'Code', 'Plasmid', 'Clone', 'Strain', 'Selection', 'Kept in', 'Made', 'Status'],
+      primer: ['', 'Code', 'Name', 'Sequence (5′→3′)', 'nt', 'Tm', 'Kept in', 'Status'],
+      chemical: ['', 'Code', 'Name', 'CAS number', 'Room', 'Size', 'SDS', 'Status'],
+    }[kind];
+    const cells = {
+      glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
+        r.source === 'sequencing' ? `${r.status} ✓` : r.status],
+      primer: (r) => [r.name, el('span', { class: 'mono' }, r.sequence), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, r.status],
+      chemical: (r) => [r.name, el('span', { class: 'mono' }, r.cas), r.room, r.size,
+        r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'), r.status],
+    }[kind];
     return el('table', { class: 'data' },
       el('thead', {}, el('tr', {}, head.map((h) => el('th', {}, h)))),
       el('tbody', {}, rows.map((r) => el('tr', { class: `clickable ${r.status !== 'in stock' ? 'faded' : ''}`, onclick: () => { location.hash = `${kind}=${r.code}`; } },
@@ -343,7 +358,7 @@ const App = {
       return;
     }
     this.rec = rec;
-    put(main, kind === 'glycerol' ? this.glycerolView(rec) : this.primerView(rec),
+    put(main, { glycerol: () => this.glycerolView(rec), primer: () => this.primerView(rec), chemical: () => this.chemicalView(rec) }[kind](),
       this.files(rec), this.mentions(rec), this.history(rec));
   },
 
@@ -514,17 +529,72 @@ const App = {
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null);
   },
 
-  async upload(rec, files) {
+  /* chemicals ---------------------------------------------------------------------- */
+
+  editChemical(rec) {
+    formModal({
+      title: rec ? `Edit ${rec.code}` : 'New chemical',
+      fields: [
+        { name: 'name', label: 'Name', value: rec?.name, placeholder: 'e.g. Ethanol absolute, Kanamycin sulfate' },
+        { name: 'cas', label: 'CAS number', value: rec?.cas, placeholder: 'e.g. 64-17-5', hint: 'The check digit is checked, to catch typing errors.' },
+        { name: 'room', label: 'Room', value: rec?.room, placeholder: 'e.g. Kruyt O.703, flammables cabinet' },
+        { name: 'size', label: 'Size', value: rec?.size, placeholder: 'e.g. 500 mL, 25 g' },
+        { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' },
+        { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
+      ],
+      submit: async (v) => {
+        const res = rec ? await api('PUT', `/chemicals/${rec.code}`, v) : await api('POST', '/chemicals', { ...v, lab: this.chosenLab });
+        if (rec) this.reload(); else location.hash = `chemical=${res.record.code}`;
+      },
+    });
+  },
+
+  /** Where to look a chemical up: the university's hazardous substances register (SOFOS), and Chemwatch. */
+  safetyLinks(cas) {
+    return el('span', { class: 'safety-links' },
+      el('a', { class: 'btn btn-secondary btn-sm', href: ST.sofos, target: '_blank', rel: 'noopener',
+        title: 'Utrecht University\'s register of hazardous substances (SOFOS)' }, '🛡 SOFOS ↗'),
+      el('a', { class: 'btn btn-secondary btn-sm', href: ST.chemwatch, target: '_blank', rel: 'noopener',
+        title: cas ? `Chemwatch: search it for CAS ${cas}` : 'Chemwatch' }, '☣ Chemwatch ↗'));
+  },
+
+  chemicalView(rec) {
+    const sds = rec.sds;
+    const copyCas = el('button', { class: 'btn btn-secondary btn-sm', onclick: async () => {
+      if (await copyText(rec.cas)) toast('CAS number copied: paste it into the search', 'success', 2500);
+      else toast('Copying is blocked here: select the CAS number and copy it', 'error', 4000);
+    } }, 'Copy');
+    const sdsInput = el('input', { type: 'file', hidden: true, accept: 'application/pdf,.pdf',
+      onchange: (e) => { if (e.target.files.length) this.upload(rec, [e.target.files[0]], SDS); } });
+    return el('div', {},
+      this.head(rec, rec.name, [rec.cas && `CAS ${rec.cas}`, rec.size, rec.room && `in ${rec.room}`, rec.status].filter(Boolean).join(' · '), [
+        el('button', { class: 'btn btn-secondary', onclick: () => this.editChemical(rec) }, '✎ Edit')]),
+      this.facts([['Name', rec.name], ['CAS number', rec.cas ? el('span', {}, el('span', { class: 'mono' }, rec.cas), ' ', copyCas) : null],
+        ['Room', rec.room], ['Size', rec.size], ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
+      rec.notes ? el('p', { class: 'description' }, rec.notes) : null,
+      this.section('Safety data sheet',
+        el('div', { class: 'sds' },
+          sds ? el('span', {}, el('a', { class: 'btn btn-primary', href: fileUrl(sds.id), target: '_blank', rel: 'noopener' }, `📕 Open the SDS`),
+            el('span', { class: 'hint' }, ` ${sds.filename} · ${sizeLabel(sds.size)} · added by ${sds.created_by || '—'} ${localTime(sds.created_at)}`))
+            : el('span', { class: 'hint' }, 'No safety data sheet yet. '),
+          el('label', { class: `btn ${sds ? 'btn-secondary' : 'btn-primary'} btn-sm` }, sds ? 'Replace the SDS…' : '📕 Add the SDS (PDF)…', sdsInput)),
+        el('p', { class: 'hint' }, rec.cas ? `Look it up by its CAS number, ${rec.cas}:` : 'Look it up:', ' ', this.safetyLinks(rec.cas))));
+  },
+
+  async upload(rec, files, caption) {
     const form = new FormData();
     for (const f of files) form.append('file', f, f.name || 'photo.png');
+    if (caption) form.append('caption', caption);
     try {
       await api('POST', `/${PLURAL[rec.kind]}/${rec.code}/attachments`, undefined, form);
+      if (caption === SDS) toast('Safety data sheet added', 'success', 2500);
       this.reload();
     } catch (err) { toast(`Not attached: ${err.message}`, 'error', 7000); }
   },
 
   files(rec) {
-    const list = rec.attachments || [];
+    // A chemical's safety data sheets are shown in their own section.
+    const list = (rec.attachments || []).filter((a) => a.caption !== SDS);
     const zone = el('div', { class: 'files' },
       list.filter((a) => a.image).length ? el('div', { class: 'gallery' }, list.filter((a) => a.image).map((a) => el('figure', {},
         el('img', { src: fileUrl(a.id), loading: 'lazy', alt: a.filename, onclick: () => window.open(fileUrl(a.id), '_blank', 'noopener') }),

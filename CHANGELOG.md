@@ -5,6 +5,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-20
+
 ### Changed
 - The order list: everyone in a lab sees the lab's orders, and those of the other labs of its chair
   group (marked with their lab), so the group sees what is asked for already; no other lab sees

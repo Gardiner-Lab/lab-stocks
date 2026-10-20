@@ -51,17 +51,18 @@ def test_order_requests_reach_their_labs_lab_admin(as_user, world):
     assert zoe.post('/api/orders', json={'record': 'GARD-A-0001'}).status_code == 404, "another lab's stock"
     _ok(ben.post('/api/glycerol', json={'plasmid_id': 'p1', 'plasmid_name': 'pGreen'}), 201)
     assert ben.post('/api/orders', json={'record': 'GARD-G-0001'}).status_code == 400, 'glycerol stocks are made'
-    # The lab admin sees the lab's orders, and no other lab's; everyone else their own.
+    # Everyone in the lab sees the lab's orders, and no other lab's (in no chair group with it).
     assert {o['item'] for o in _ok(lead.get('/api/orders'))['orders']} == {'Phusion polymerase', 'M13 fwd', 'Anti-GFP'}
     assert _ok(lead.get('/api/orders'))['waiting'] == 3
-    assert [o['item'] for o in _ok(ana.get('/api/orders'))['orders']] == ['Phusion polymerase']
+    assert {o['item'] for o in _ok(ana.get('/api/orders'))['orders']} == {'Phusion polymerase', 'M13 fwd', 'Anti-GFP'}
+    assert _ok(ana.get('/api/orders'))['waiting'] == 0                 # the number is for those who order
     assert [o['item'] for o in _ok(olga.get('/api/orders'))['orders']] == ['Tips']
     assert lead.get(f"/api/orders/{_ok(zoe.get('/api/orders'))['orders'][0]['id']}").status_code == 404
     assert len(_ok(boss.get('/api/orders'))['orders']) == 4
     # Only the lab admin orders; the one who asked may change or cancel it until then.
     assert ana.put(f"/api/orders/{taq['id']}", json={'status': 'ordered'}).status_code == 403
     _ok(ana.put(f"/api/orders/{taq['id']}", json={'quantity': '1 × 100 U'}))
-    assert ben.put(f"/api/orders/{taq['id']}", json={'quantity': '9'}).status_code == 404, "not ben's request"
+    assert ben.put(f"/api/orders/{taq['id']}", json={'quantity': '9'}).status_code == 403, "not ben's request"
     done = _ok(lead.put(f"/api/orders/{taq['id']}", json={'status': 'ordered'}))['order']
     assert done['ordered_by'] == 'lead' and done['ordered_at']
     assert ana.put(f"/api/orders/{taq['id']}", json={'quantity': '5'}).status_code == 403
@@ -84,6 +85,37 @@ def test_order_requests_reach_their_labs_lab_admin(as_user, world):
     assert 'CAGGAAACAGCTATGAC' in lead.get('/api/orders.csv?status=requested').get_data(as_text=True)
     history = _ok(lead.get(f"/api/orders/{taq['id']}"))['order']['changes']
     assert any("'requested' → 'ordered'" in c['what'] for c in history)
+
+
+def test_a_chair_group_sees_its_labs_orders_and_each_lab_orders_its_own(as_user, world):
+    _lab_admins(world, 'lead')
+    ana, lead, zoe, olga = (as_user(u) for u in ('ana', 'lead', 'zoe', 'olga'))
+    mine = _ok(ana.post('/api/orders', json={'item': 'Phusion polymerase', 'supplier': 'NEB'}), 201)['order']
+    theirs = _ok(zoe.post('/api/orders', json={'item': 'Tips', 'category': 'consumable'}), 201)['order']
+    assert zoe.get(f"/api/orders/{mine['id']}").status_code == 404
+    # Gardiner Lab (1) and Other Lab (2) put in one chair group on the suite's dashboard.
+    conn = sqlite3.connect(world['paths']['suite'])
+    conn.executescript("""
+        CREATE TABLE chair_groups (id TEXT PRIMARY KEY, name TEXT UNIQUE);
+        ALTER TABLE labs ADD COLUMN chair_group_id TEXT;
+        INSERT INTO chair_groups VALUES ('pb', 'Plant Biology');
+        UPDATE labs SET chair_group_id = 'pb';
+    """)
+    conn.commit()
+    conn.close()
+    seen = {o['item']: o for o in _ok(zoe.get('/api/orders'))['orders']}
+    assert set(seen) == {'Phusion polymerase', 'Tips'}
+    assert not seen['Phusion polymerase']['own_lab'] and seen['Tips']['own_lab']
+    assert not seen['Phusion polymerase']['can_handle'] and not seen['Phusion polymerase']['can_change']
+    # Seen across the chair group, handled by each lab's own lab admin only.
+    assert zoe.put(f"/api/orders/{mine['id']}", json={'quantity': '9'}).status_code == 403
+    assert olga.put(f"/api/orders/{mine['id']}", json={'status': 'ordered'}).status_code == 403
+    assert lead.put(f"/api/orders/{theirs['id']}", json={'status': 'ordered'}).status_code == 403
+    _ok(lead.put(f"/api/orders/{mine['id']}", json={'status': 'ordered'}))
+    assert _ok(lead.get('/api/orders'))['waiting'] == 0 and _ok(olga.get('/api/orders'))['waiting'] == 1
+    # The lab admin's spreadsheet: their own lab's orders, not the chair group's.
+    sheet = lead.get('/api/orders.csv').get_data(as_text=True)
+    assert 'Phusion polymerase' in sheet and 'Tips' not in sheet
 
 
 def test_a_chemical_marked_out_goes_on_the_order_list_and_comes_back_in_stock(as_user, world):

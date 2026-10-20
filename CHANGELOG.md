@@ -5,6 +5,11 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The order list: everyone in a lab sees the lab's orders, and those of the other labs of its chair
+  group (marked with their lab), so the group sees what is asked for already; no other lab sees
+  them. Each lab's own lab admins still handle its orders, and their spreadsheet holds only those.
+
 ## [0.4.1] - 2026-10-20
 
 ### Added

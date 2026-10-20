@@ -4,9 +4,11 @@ The order list: what a lab needs ordered, and its lab admin ordering it.
 Anyone in a lab asks for something to be ordered: from a chemical, primer or
 antibody's page (its details come along), or with the order request form for
 anything else (an enzyme, a kit, tips). A chemical marked out is put on the list
-by itself. A lab's lab admins (and administrators) see all of the lab's orders,
-and no other lab's; they mark them ordered, then received, or cancel them.
-Everyone else sees the requests they made.
+by itself. Everyone in a lab sees the lab's orders, and those of the other labs
+of its chair group (the suite's), so the group sees what is asked for already;
+no other lab's. A lab's lab admins (and administrators) handle the lab's orders:
+mark them ordered, then received, or cancel them; the one who asked changes or
+cancels their request until it is ordered.
 
     requested -> ordered -> received        or cancelled, before it is received
 
@@ -20,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from app.db import connect
 from app.people import Person
-from app.records import Forbidden, NotFound, _log, _text, can_change, changeable, kind_of, lab_of, labs_of
+from app.records import Forbidden, NotFound, _log, _text, can_change, changeable, kind_of, lab_of, labs_of, sees
 
 STATUS = ('requested', 'ordered', 'received', 'cancelled')
 OPEN = ('requested', 'ordered')
@@ -35,11 +37,14 @@ def _out(row, person: Person) -> dict:
     out['auto'] = bool(row['auto'])
     out['can_handle'] = person.administers(row['lab'])
     out['can_change'] = out['can_handle'] or (row['requested_by'] == person.username and row['status'] == 'requested')
+    # Another lab's, of the chair group: seen, not changed.
+    out['own_lab'] = can_change(person, row)
     return out
 
 
 def _sees(person: Person, row) -> bool:
-    return person.administers(row['lab']) or (row['requested_by'] == person.username and can_change(person, row))
+    """Their own lab's orders, and those of the other labs of its chair group; administrators all."""
+    return person.is_admin or (row['lab'] or '').casefold() in sees(person)
 
 
 def _row(conn, person: Person, order_id) -> Any:
@@ -290,6 +295,10 @@ def as_csv(person: Person, status: str = '', q: str = '') -> str:
     out = csv.writer(buf)
     out.writerow([title for _, title in CSV_COLUMNS])
     found = list_orders(person, status, q, limit=100000)
+    # The lab admin's own labs' orders only (not the chair group's, which their own lab admins order).
+    handled = {lab.casefold() for lab in handles(person)}
+    if handled:
+        found = [o for o in found if o['lab'].casefold() in handled]
     # A primer's sequence on its own, for a supplier's bulk order form.
     with connect() as conn:
         sequences = {r['code']: r['sequence'] for r in conn.execute('SELECT code, sequence FROM primers')}

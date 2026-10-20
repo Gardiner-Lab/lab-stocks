@@ -1414,7 +1414,7 @@ const App = {
       let data;
       try { data = await api('GET', `/orders${qs}`); } catch (err) { put(table, el('p', { class: 'empty' }, err.message)); return; }
       this.showWaiting(data.waiting);
-      put(table, this.ordersTable(data.orders, !!handles.length));
+      put(table, this.ordersTable(data.orders));
     };
     let timer;
     query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
@@ -1424,28 +1424,29 @@ const App = {
         el('span', { class: 'actions' }, el('button', { class: 'btn btn-primary', onclick: () => this.orderRequest() }, '＋ Order request'),
           handles.length ? sheet : null)),
       el('p', { class: 'hint' }, handles.length
-        ? `You order for ${handles.join(', ')}: these are the lab's requests, from the request form, 🛒 Add to order on a chemical, primer or antibody, and chemicals switched to Out. Mark each ✓ Ordered when you have ordered it, and 📦 Received when it arrives; a stock that had run out is then back in stock.`
-        : 'Ask for what the lab needs with ＋ Order request, or 🛒 Add to order on a chemical, primer or antibody; a chemical switched to Out is added by itself. Your lab admin orders it. These are your requests, and how far each has got.'),
+        ? `You order for ${handles.join(', ')}: these are the lab's requests, from the request form, 🛒 Add to order on a chemical, primer or antibody, and chemicals switched to Out. Mark each ✓ Ordered when you have ordered it, and 📦 Received when it arrives; a stock that had run out is then back in stock. Orders of the other labs of your chair group are shown too, marked with their lab; their own lab admins order them.`
+        : 'Ask for what the lab needs with ＋ Order request, or 🛒 Add to order on a chemical, primer or antibody; a chemical switched to Out is added by itself. Your lab admin orders it. These are the orders of your lab, and of the other labs of its chair group (marked with their lab), and how far each has got.'),
       el('div', { class: 'list-tools' }, filter, query), table);
     await draw();
   },
 
-  ordersTable(rows, handler) {
+  ordersTable(rows) {
     if (!rows.length) return el('p', { class: 'empty' }, 'No orders here.');
     const STATUS_LABEL = { requested: 'to order', ordered: 'ordered', received: 'received', cancelled: 'cancelled' };
     return el('table', { class: 'data orders' },
-      el('thead', {}, el('tr', {}, ['#', 'What', 'Kind', 'How much', 'Supplier', 'Product number', handler ? 'Asked by' : 'Asked', 'Status', ''].map((h) => el('th', {}, h)))),
+      el('thead', {}, el('tr', {}, ['#', 'What', 'Kind', 'How much', 'Supplier', 'Product number', 'Asked by', 'Status', ''].map((h) => el('th', {}, h)))),
       el('tbody', {}, rows.map((o) => el('tr', { class: `clickable ${['received', 'cancelled'].includes(o.status) ? 'faded' : ''}`, onclick: () => this.openOrder(o) },
         el('td', { class: 'code' }, o.id),
         el('td', {}, o.urgent ? el('span', { class: 'urgent', title: 'Urgent' }, '❗ ') : null, el('b', {}, o.item),
+          o.own_lab ? null : el('span', { class: 'lab-tag', title: `${o.lab}'s order, in your chair group: ${o.lab}'s lab admin orders it` }, o.lab),
           o.record_code ? [' ', el('a', { class: 'code-badge', href: `#${o.record_kind}=${o.record_code}`, onclick: (e) => e.stopPropagation() }, o.record_code)] : null,
           o.details ? el('div', { class: 'hint clip' }, o.details) : null,
           o.notes ? el('div', { class: 'hint clip', title: o.notes }, `“${o.notes}”`) : null),
         el('td', {}, o.category), el('td', {}, o.quantity),
         el('td', {}, o.link ? el('a', { href: o.link, target: '_blank', rel: 'noopener noreferrer', onclick: (e) => e.stopPropagation() }, `${o.supplier || 'link'} ↗`) : o.supplier),
         el('td', {}, el('span', { class: 'mono' }, o.product_number)),
-        el('td', {}, handler ? `${o.requested_by || '—'} · ` : '', localTime(o.requested_at).slice(0, 10), o.auto ? el('span', { class: 'hint', title: 'Added on marking the chemical out' }, ' (out)') : null,
-          handler && this.meta.orders.handles.length > 1 ? el('div', { class: 'hint' }, o.lab) : null),
+        el('td', {}, `${o.requested_by || '—'} · `, localTime(o.requested_at).slice(0, 10), o.auto ? el('span', { class: 'hint', title: 'Added on marking the chemical out' }, ' (out)') : null,
+          this.meta.orders.handles.length > 1 && o.own_lab ? el('div', { class: 'hint' }, o.lab) : null),
         el('td', {}, el('span', { class: `status-pill status-${o.status}` }, STATUS_LABEL[o.status] || o.status),
           o.status === 'ordered' && o.ordered_at ? el('div', { class: 'hint' }, localTime(o.ordered_at).slice(0, 10)) : null),
         el('td', {}, this.orderActions(o))))));

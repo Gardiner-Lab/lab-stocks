@@ -5,6 +5,35 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Copies a lab's glycerol stocks, and its seed lots from the Seed Bank, to
+  eLabJournal's inventory, one way, into the eLab group's own sample types
+  (Glycerol Stock, Plant Seed) and the fields they have, adding nothing to them;
+  archived there when used up, discarded or deleted. The lab admin connects it
+  with *Connect to eLabJournal…*, which walks them through making a token in
+  eLab, tries it, and lets them choose the sample types and the lab's permit and
+  biosafety level. The list pages say how far the copy is.
+- A glycerol stock's biosafety, as the GMO register (and eLab's Glycerol Stock type) asks: permit,
+  biosafety level and host system (empty: the lab's, or from the strain), plant and yeast markers,
+  insert(s), gene IDs, donor organism(s), harmful gene product and remarks on it; added to existing
+  databases. eLab also gets the sequence and size of the plasmid linked in the editor, and from a
+  Seed Bank 0.4.0 on, a seed lot's line's biosafety, stock center and genetics.
+- A glycerol stock's storage location in eLab, chosen in its form from the group's storage (its
+  freezers' towers, shelves and boxes, and a place in a box), or added there from the form; its
+  sample in eLab is put there, and moved with it.
+- Plant material: tubes kept for later processing, a box of them at once (numbered, or a pasted
+  list) filling a box's places in eLab, linked from the notebook by code, copied to eLab's Plant
+  Material type.
+- A record's page links to its sample in eLab and says how it stands there; one archived in eLab can
+  be sent again (to the same sample once restored there, else a new one).
+- Nothing is made twice in eLab: records found again by code or name, a taken code reported rather
+  than sent again, seed lots brought over only ever linked, an eLab sample linked to one record.
+- Bringing over what eLab already has: its plant material as tubes here, and its seed samples to
+  the Seed Bank as lines and lots, each linked to its sample, which keeps its name there.
+- Chair groups, as the suite's administrators set them on the dashboard (suite 2.9.0 on): their
+  labs see each other's stocks, read-only, on request in the lists.
+
 ## [0.3.0] - 2026-10-19
 
 ### Added

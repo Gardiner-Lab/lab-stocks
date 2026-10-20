@@ -59,6 +59,130 @@ It runs inside the [Gardiner Lab suite](https://github.com/Gardiner-Lab/gardiner
 | `SUITE_PUBLIC_URL` | (the page's own address) | where phones reach the suite, for label QR codes |
 | `SOFOS_URL` | UU's SOFOS information portal | the hazardous substances register chemicals link to |
 | `CHEMWATCH_URL` | `https://jr.chemwatch.net/chemwatch.web/` | Chemwatch, which chemicals link to |
+| `ELAB_URL`, `ELAB_TOKEN` | (off) | copy every lab's glycerol stocks and seed lots to eLabJournal, for labs not connected on the page (below) |
+| `ELAB_LABS` | every lab | the suite labs copied, comma-separated |
+| `ELAB_KINDS` | `glycerol,seed` | what is copied |
+| `ELAB_SAMPLE_TYPES` | Glycerol Stock, Plant Seed | other sample type names, e.g. `seed=Seeds` |
+| `ELAB_INTERVAL` | `120` | seconds between checks for changes |
+| `ELAB_HOSTS` | `elabjournal.com,elabnext.com` | the hosts (and their subdomains) a lab may connect to |
+
+## Plant material
+
+Tubes of plant material kept for later processing (leaf, flower, root, ...),
+coded GL-M-0001, each linked from the notebook by its code like any stock.
+*＋ Tube* adds one; *📦 Box of tubes* adds many at once: numbered (L2201-1 to
+L2201-81, with a suffix and zero padding if wanted) or a pasted list (one a
+line; a second column, after a tab, its description), the rest of the form
+shared by all, and in a box with places in eLab, filling them in order from the
+place given. They go to eLab's *Plant Material* type (a name, description, note
+and place).
+
+## Bringing over from eLab
+
+*⇩ Bring over from eLab…* (the lab admin, once the lab is connected) lists eLab's
+Plant Material or Plant Seed samples not yet linked to a record here, by owner
+and where they are kept, and brings the chosen ones over: plant material as
+tubes here, in their places; seed samples to the Seed Bank, one line per cross
+or note with each sample a seed lot of it (made through the Seed Bank's own
+API, as the person signed in). Each is linked to its sample in eLab, which keeps
+its name; nothing is changed there until the record is changed here.
+
+## Chair groups
+
+Labs that work together (a chair group, a department) can see each other's
+stocks. Chair groups are the suite's: an administrator makes them and puts labs
+in them on the dashboard's Labs tab (/account/), and Lab Stocks reads them from
+the suite's database. Each lab is in one at most; the lists say which.
+
+- In a list, *Show the stocks of the other labs of …* adds theirs, each tagged
+  with its lab; the choice is remembered in the browser.
+- Another lab's stock opens read-only: it can be seen, labelled and searched for
+  (notebook links too), but only its own lab changes, deletes, attaches files to
+  or orders it. The Plasmid Editor binds only the lab's own primers.
+- eLab stays per lab: each lab sends its own stocks with its own token; in a
+  shared eLab group, a sample's owner says whose it is.
+
+## eLabJournal
+
+Lab Stocks copies a lab's **glycerol stocks**, and its **seed lots** from the Seed
+Bank, to eLabJournal's inventory, one way: change them here (or in the Seed
+Bank), and eLab follows. Primers, chemicals and antibodies are not copied.
+
+**Connecting a lab.** Its lab admin clicks *Connect to eLabJournal…* above any
+list, and is walked through it: open eLab, make a token there (Apps &
+Connections > Manage Authentication, on the eLab Mobile App card), paste it, and
+choose, for glycerol stocks and seed lots, which of the group's sample types
+they go to (Glycerol Stock, Plant Seed) and the lab's **Permit** and
+**Biosafety level**, from that type's own options. The token is tried before it
+is kept, in Lab Stocks' database (so in its backups too), and never shown again.
+Each lab connects with its own token. *eLab settings…* changes this later, or
+stops it. Only eLab hosts are accepted (`ELAB_HOSTS`).
+
+The eLab group is usually shared by a chair group, so **nothing is added to its
+sample types**: no types are made, no fields added. Values go into the fields
+the type has, and a value for a field with options is sent only when it is one
+of them (as eLab spells it):
+
+| Glycerol stock | → *Glycerol Stock* |
+| --- | --- |
+| code, plasmid, clone | the sample's name; the code is its alternative id |
+| strain | *Name of host strain*, and *Host system* worked out from it (DH5α: E. coli, GV3101: Agrobacterium / Rhizobium, ...) |
+| selection; plant and yeast markers | *Bacterial Markers*; *Plant Markers*, *Yeast Markers* |
+| permit, biosafety level, host system (empty: the lab's, or from the strain) | *Permit*, *Biosafety level*, *Host system* |
+| insert(s), gene IDs, donor organism(s), harmful gene product and remarks | the fields of those names |
+| the plasmid linked in the Plasmid Editor | *Plasmid sequence*, *Molecular weight (in kb)* |
+| storage location (eLab), and the place in a box | the sample is put there in eLab's storage |
+| plasmid, clone, where kept, made on, notes | *Remarks* |
+
+| Seed lot (Seed Bank) | → *Plant Seed* |
+| --- | --- |
+| code, line | the sample's name; the code is its alternative id |
+| species, background, generation, harvest date | *Species*, *Genetic background*, *Generation*, *Harvest Date* |
+| the plants it came from | *Mother plant*, *Father plant*, *Cross* |
+| zygosity | *Zygosity* (homozygous, heterozygous, hemizygous) |
+| the line transgenic, with plasmids, or a T-DNA or plasmid GMO type; wild type | *GMO* Yes; No (else Unknown) |
+| the line's permit and biosafety level (empty: the lab's), GMO type, gene expression, selection marker, mutation information, construction method | the fields of those names |
+| the line's stock center collection and number, accession, link | *Line*, *Stock center number*, *Stock center line*, *Accession*, *Web link stock center* |
+| who entered the lot in the Seed Bank | *Harvested by* |
+| line, amount, where kept, germination, source, notes | *Description* |
+
+- **Storage location.** A glycerol stock's form has *Storage location (eLab)*: every
+  compartment of the group's storage units (freezers, towers, shelves, boxes;
+  not its equipment), found by typing, and for a box with places, the place
+  (its number, as eLab shows it; B3 too in a box with lettered rows). *New location under the one
+  chosen* adds a compartment in eLab, of a kind that unit has at that level (a
+  shelf under a tower, a box under a shelf), and chooses it. eLab's storage is
+  read when the form opens and kept for ten minutes (↻ reads it again). Anyone
+  in the lab may add one. The free-text *Kept in* stays as well.
+- Used up, discarded or deleted: **archived** in eLab. Brought back: a new sample.
+- A record's page links to its sample in eLab (*In eLabJournal: sample … ↗*,
+  opening it in eLab's inventory) and says how it stands: sent, waiting, not
+  sent and why, or archived.
+- Archived in eLab (by someone there): left so: no longer sent, never made again;
+  the list pages count them. *Send to eLab again* on its page sends it to the
+  same sample if it was restored in eLab meanwhile (eLab's Restore), else as a
+  new one. A sample this account may not change (someone
+  else's, brought over from eLab) is listed as failed, naming its owner.
+- Anything changed in eLab is overwritten by the next change here.
+- Glycerol stocks are sent straight after a change; seed lots, changed in the
+  Seed Bank, at the next round (every `ELAB_INTERVAL` seconds, 2 minutes).
+- **Nothing is made twice.** A record is found again in eLab by its code (the
+  sample's barcode) or, sent without one, by its name, before anything is made;
+  a code already a live sample's barcode is listed as failed, not made again;
+  a seed lot brought over from eLab (its source "eLab sLAB…") is only ever
+  linked to that sample, never sent as new; plant material is made and linked
+  with the sync paused; an eLab sample is linked to one record at most; and the
+  import leaves out what was brought over already. Connect each lab from one
+  installation only: a test copy sending the same lab would find and change
+  the same samples.
+- What was sent is kept in `elab_links`; what eLab refused is tried again after
+  ten minutes, or at once when it changes. The list pages say how many are sent,
+  waiting and failed; the lab admin can send at once.
+
+Signing in to UU's eLab goes through the university, so a token cannot be had
+from a username and password. Without a lab's own connection, the `ELAB_`
+settings above connect every lab (or those in `ELAB_LABS`), without a permit or
+biosafety level.
 
 ## Licence
 

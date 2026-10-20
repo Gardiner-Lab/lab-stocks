@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from app.db import connect
 from app.people import Person
-from app.records import Forbidden, NotFound, _log, _text, can_see, kind_of, lab_of, labs_of, visible
+from app.records import Forbidden, NotFound, _log, _text, can_change, changeable, kind_of, lab_of, labs_of
 
 STATUS = ('requested', 'ordered', 'received', 'cancelled')
 OPEN = ('requested', 'ordered')
@@ -39,7 +39,7 @@ def _out(row, person: Person) -> dict:
 
 
 def _sees(person: Person, row) -> bool:
-    return person.administers(row['lab']) or (row['requested_by'] == person.username and can_see(person, row))
+    return person.administers(row['lab']) or (row['requested_by'] == person.username and can_change(person, row))
 
 
 def _row(conn, person: Person, order_id) -> Any:
@@ -102,9 +102,9 @@ def _from_record(conn, person: Person, code: str) -> Dict[str, Any]:
     kind = kind_of(code)
     if kind is None:
         raise NotFound('No such stock')
-    if kind == 'glycerol':
-        raise ValueError('Glycerol stocks are made in the lab, not ordered')
-    rec = visible(conn, person, kind, code)
+    if kind in ('glycerol', 'material'):
+        raise ValueError(f"{'Glycerol stocks' if kind == 'glycerol' else 'Plant material'} is made in the lab, not ordered")
+    rec = changeable(conn, person, kind, code)
     base = {'record_kind': kind, 'record_code': rec['code'], 'lab': rec['lab'], 'category': kind}
     if kind == 'chemical':
         return {**base, 'item': rec['name'], 'quantity': rec['size'],

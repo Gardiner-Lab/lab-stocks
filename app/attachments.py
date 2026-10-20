@@ -86,10 +86,10 @@ def listed(conn, record_kind: str, record_id: str) -> List[dict]:
 
 
 def _owner(conn, person: Person, record_kind: str, record_id: str):
-    """The record a file hangs on, checked visible."""
+    """The record a file hangs on, checked to be one this person changes."""
     if record_kind not in RECORD_KINDS:
         raise ValueError('Files go on a glycerol stock, a primer, a chemical or an antibody')
-    row = records.visible(conn, person, record_kind, record_id)
+    row = records.changeable(conn, person, record_kind, record_id)
     return row['id'], record_kind, row['id']
 
 

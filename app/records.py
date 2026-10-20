@@ -17,13 +17,16 @@ import secrets
 import sqlite3
 from typing import Any, Dict, List, Optional
 
-from app import oligo
+from app import elab, oligo
 from app.db import connect
 from app.people import Person
 
-KINDS = {'glycerol': 'G', 'primer': 'O', 'chemical': 'C', 'antibody': 'A'}
-TABLE = {'glycerol': 'glycerol', 'primer': 'primers', 'chemical': 'chemicals', 'antibody': 'antibodies'}
-NAMES = {'glycerol': 'glycerol stock', 'primer': 'primer', 'chemical': 'chemical', 'antibody': 'antibody'}
+KINDS = {'glycerol': 'G', 'primer': 'O', 'chemical': 'C', 'antibody': 'A', 'material': 'M'}
+TABLE = {'glycerol': 'glycerol', 'primer': 'primers', 'chemical': 'chemicals', 'antibody': 'antibodies', 'material': 'material'}
+NAMES = {'glycerol': 'glycerol stock', 'primer': 'primer', 'chemical': 'chemical', 'antibody': 'antibody',
+         'material': 'plant material'}
+# Plant material: what tissue, suggested in its form.
+TISSUES = ('leaf', 'flower', 'petal', 'root', 'stem', 'seedling', 'seed', 'fruit', 'callus', 'whole plant', 'RNA', 'DNA')
 ANTIBODY_TYPES = ('primary', 'secondary', 'other')
 CAS = re.compile(r'(\d{2,7})-(\d{2})-(\d)')
 SDS = 'SDS'                 # the caption of a chemical's safety data sheet
@@ -31,6 +34,15 @@ STATUS = ('in stock', 'used up', 'discarded')
 # A chemical runs out (and is ordered again), or is got rid of.
 CHEMICAL_STATUS = ('in stock', 'out', 'discarded')
 DIRECTIONS = ('', 'forward', 'reverse')
+# A glycerol stock's biosafety, as the GMO register (and eLab) has it. Empty: the
+# lab's own permit and biosafety level (chosen with eLab), the host system from the strain.
+BIOSAFETY = ('', 'I', 'II', 'III', 'IV', 'unknown')
+HOST_SYSTEMS = ('', 'E. coli', 'Agrobacterium / Rhizobium', 'Yeast', 'Pseudomonas', 'Fungi', 'other')
+YES_NO = ('', 'yes', 'no')
+HARMFUL = ('', 'unknown', 'no', 'yes')
+PERMITS = ('IG 99-249', 'new plasmid (not yet in permit)')
+PLANT_MARKERS = ('BASTA', 'Hygromycin', 'Kanamycin', 'Norflurazon', 'Methotrexate', 'GFP', 'DsRed', 'Ruby', 'Fluorescent Seed')
+YEAST_MARKERS = ('Ura-', 'Trp-', 'Leu-', 'His-', 'Lys-', 'Met-', 'Ade-', 'Gal-', 'Cycloheximide')
 LAB_CODE = re.compile(r'[A-Z][A-Z0-9]{0,5}')
 
 
@@ -68,7 +80,23 @@ def leads(person: Person, lab: str) -> bool:
     return person.is_admin or person.leads(lab) or lab.startswith('user:')
 
 
+def sees(person: Person) -> set:
+    """The labs (casefolded) whose stocks this person sees: theirs, and the other labs of their chair groups."""
+    cached = getattr(person, '_sees', None)
+    if cached is None:
+        from app import chairs
+        own = {n.casefold() for n in labs_of(person)}
+        cached = own | chairs.mates(own)
+        person._sees = cached
+    return cached
+
+
 def can_see(person: Person, row) -> bool:
+    return person.is_admin or (row['lab'] or '').casefold() in sees(person)
+
+
+def can_change(person: Person, row) -> bool:
+    """Their own lab's: a chair group's other labs see a stock, but do not change it."""
     return person.is_admin or (row['lab'] or '').casefold() in {n.casefold() for n in labs_of(person)}
 
 
@@ -185,8 +213,8 @@ def _code(conn, kind: str, lab: str) -> str:
 
 
 def kind_of(code: str) -> Optional[str]:
-    m = re.fullmatch(r'[A-Z][A-Z0-9]{0,5}-([GOCA])-\d+', (code or '').strip().upper())
-    return {'G': 'glycerol', 'O': 'primer', 'C': 'chemical', 'A': 'antibody'}[m.group(1)] if m else None
+    m = re.fullmatch(r'[A-Z][A-Z0-9]{0,5}-([GOCAM])-\d+', (code or '').strip().upper())
+    return {'G': 'glycerol', 'O': 'primer', 'C': 'chemical', 'A': 'antibody', 'M': 'material'}[m.group(1)] if m else None
 
 
 # --- reading ---------------------------------------------------------------------
@@ -206,9 +234,18 @@ def visible(conn, person: Person, kind: str, ident: str):
     return row
 
 
-def _out(kind: str, row) -> dict:
+def changeable(conn, person: Person, kind: str, ident: str):
+    """A record this person may change: their own lab's."""
+    row = visible(conn, person, kind, ident)
+    if not can_change(person, row):
+        raise Forbidden(f"This {NAMES[kind]} is {row['lab']}'s: only its own lab changes it")
+    return row
+
+
+def _out(kind: str, row, person: Optional[Person] = None) -> dict:
     out = {k: row[k] for k in row.keys()}
     out['kind'] = kind
+    out['mine'] = person is None or can_change(person, row)
     if kind == 'primer':
         out.update(oligo.describe(row['sequence']))
     return out
@@ -218,7 +255,7 @@ def detail(person: Person, kind: str, ident: str) -> dict:
     from app import attachments
     with connect() as conn:
         row = visible(conn, person, kind, ident)
-        out = _out(kind, row)
+        out = _out(kind, row, person)
         out['attachments'] = attachments.listed(conn, kind, row['id'])
         if kind == 'chemical':
             # Its safety data sheet: the latest file captioned SDS.
@@ -226,7 +263,7 @@ def detail(person: Person, kind: str, ident: str) -> dict:
         out['changes'] = [dict(r) for r in conn.execute(
             'SELECT changed_by, changed_at, what FROM changes WHERE record_kind = ? AND record_id = ? '
             'ORDER BY rowid DESC LIMIT 200', (kind, row['id']))]
-        if kind != 'glycerol':
+        if kind not in ('glycerol', 'material'):
             from app import orders
             # Its order, when it is on the order list.
             out['order'] = orders.open_order(conn, row['code'])
@@ -252,13 +289,19 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
                    'OR c.size LIKE ? OR c.notes LIKE ?)')
             args = [SDS] + [like] * 6
             rows = conn.execute(sql + ' ORDER BY c.name COLLATE NOCASE, c.rowid', args).fetchall()
-            return [_out(kind, r) for r in rows if can_see(person, r)][:limit]
+            return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
+        if kind == 'material':
+            sql = ('SELECT * FROM material WHERE deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR tissue LIKE ? '
+                   'OR species LIKE ? OR from_plant LIKE ? OR description LIKE ? OR experiment LIKE ? OR collected_by LIKE ? '
+                   'OR location LIKE ? OR elab_layer_path LIKE ? OR notes LIKE ?) ORDER BY created_at DESC, rowid DESC')
+            rows = conn.execute(sql, [like] * 11).fetchall()
+            return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
         if kind == 'antibody':
             sql = ('SELECT * FROM antibodies WHERE deleted_at IS NULL AND (code LIKE ? OR short_code LIKE ? '
                    'OR description LIKE ? OR type LIKE ? OR producer LIKE ? OR host LIKE ? OR product_number LIKE ? '
                    "OR notes LIKE ?) ORDER BY short_code = '', short_code COLLATE NOCASE, description COLLATE NOCASE, rowid")
             rows = conn.execute(sql, [like] * 8).fetchall()
-            return [_out(kind, r) for r in rows if can_see(person, r)][:limit]
+            return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
         if kind == 'glycerol':
             sql = ('SELECT * FROM glycerol WHERE deleted_at IS NULL AND (code LIKE ? OR plasmid_name LIKE ? OR clone LIKE ? '
                    'OR host LIKE ? OR selection LIKE ? OR location LIKE ? OR notes LIKE ?)')
@@ -274,7 +317,7 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
                    'OR purpose LIKE ? OR location LIKE ? OR notes LIKE ?' + (' OR sequence LIKE ?' if by_sequence else '') + ')')
             args = [like] * 6 + ([f'%{seq}%'] if by_sequence else [])
         rows = conn.execute(sql + ' ORDER BY created_at DESC, rowid DESC', args).fetchall()
-    return [_out(kind, r) for r in rows if can_see(person, r)][:limit]
+    return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
 
 
 def search(person: Person, q: str, limit: int = 20) -> List[dict]:
@@ -289,6 +332,9 @@ def search(person: Person, q: str, limit: int = 20) -> List[dict]:
                    filter(None, [r['short_code'], r['description'] if not r['short_code'] else '',
                                  f"({', '.join(filter(None, [r['type'], r['host']]))})"])))
               for r in list_records(person, 'antibody', q, limit=limit)]
+    found += [dict(kind='material', code=r['code'], label=f"{r['code']} {r['name']}"
+                   + (f" ({', '.join(filter(None, [r['tissue'], r['species'] or r['from_plant']]))})" if r['tissue'] or r['species'] or r['from_plant'] else ''))
+              for r in list_records(person, 'material', q, limit=limit)]
     exact = [f for f in found if f['code'].upper() == q.upper()]
     return (exact + [f for f in found if f not in exact])[:limit]
 
@@ -298,9 +344,27 @@ def search(person: Person, q: str, limit: int = 20) -> List[dict]:
 def _glycerol_fields(data: dict, partial: bool) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for key, limit in (('plasmid_id', 80), ('plasmid_name', 200), ('clone', 60), ('host', 120),
-                       ('selection', 120), ('location', 200), ('notes', 5000)):
+                       ('selection', 120), ('location', 200), ('notes', 5000), ('permit', 120),
+                       ('plant_markers', 200), ('yeast_markers', 200), ('gene_ids', 300), ('donor', 200),
+                       ('harmful_notes', 2000), ('elab_layer_path', 500)):
         if key in data or not partial:
             out[key] = _text(data.get(key), limit)
+    # Where it is kept in eLab's storage: a compartment's number there, and a place in a box.
+    for key in ('elab_layer_id', 'elab_position'):
+        if key in data or not partial:
+            v = _text(data.get(key), 12)
+            if v and not v.isdigit():
+                raise ValueError('A storage location in eLab is chosen from the list')
+            out[key] = v
+    if out.get('elab_layer_id') == '':
+        out['elab_layer_path'], out['elab_position'] = '', ''
+    for key, allowed, what in (('biosafety', BIOSAFETY, 'biosafety level'), ('host_system', HOST_SYSTEMS, 'host system'),
+                               ('inserts', YES_NO, 'insert(s)'), ('harmful', HARMFUL, 'harmful gene product')):
+        if key in data or not partial:
+            v = _text(data.get(key))
+            if v not in allowed:
+                raise ValueError(f'{what} must be one of {", ".join(a for a in allowed if a)}, or empty')
+            out[key] = v
     if 'made_on' in data or not partial:
         out['made_on'] = _date(data.get('made_on'))
     if 'status' in data or not partial:
@@ -380,8 +444,65 @@ def _antibody_fields(data: dict, partial: bool) -> Dict[str, Any]:
     return out
 
 
+def _material_fields(data: dict, partial: bool) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if 'name' in data or not partial:
+        out['name'] = _text(data.get('name'), 120)
+        if not out['name']:
+            raise ValueError('Plant material needs a name: what is written on the tube')
+    for key, limit in (('tissue', 80), ('species', 120), ('from_plant', 120), ('description', 500), ('collected_by', 120),
+                       ('experiment', 200), ('location', 200), ('elab_layer_path', 500), ('notes', 5000)):
+        if key in data or not partial:
+            out[key] = _text(data.get(key), limit)
+    if 'collected_on' in data or not partial:
+        out['collected_on'] = _date(data.get('collected_on'))
+    for key in ('elab_layer_id', 'elab_position'):
+        if key in data or not partial:
+            v = _text(data.get(key), 12)
+            if v and not v.isdigit():
+                raise ValueError('A storage location in eLab is chosen from the list')
+            out[key] = v
+    if out.get('elab_layer_id') == '':
+        out['elab_layer_path'], out['elab_position'] = '', ''
+    if 'status' in data or not partial:
+        s = _text(data.get('status')) or 'in stock'
+        if s not in STATUS:
+            raise ValueError(f'status must be one of {", ".join(STATUS)}')
+        out['status'] = s
+    return out
+
+
 FIELDS = {'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _chemical_fields,
-          'antibody': _antibody_fields}
+          'antibody': _antibody_fields, 'material': _material_fields}
+
+
+MANY = 500                  # plant material made at once, at most: a few boxes of tubes
+
+
+def create_material(person: Person, items: List[dict], shared: dict, lab: Optional[str] = None) -> List[str]:
+    """
+    Several tubes of plant material at once (a box of them): each item its own name and fields, the
+    shared fields for all. Gives their ids, in order. All or none are made.
+    """
+    items = [i for i in (items or []) if isinstance(i, dict)]
+    if not items:
+        raise ValueError('Give the names of the tubes')
+    if len(items) > MANY:
+        raise ValueError(f'At most {MANY} tubes at once')
+    lab = lab_of(person, lab, strict=True)
+    rows = [_material_fields({**(shared or {}), **i}, partial=False) for i in items]
+    made = []
+    with connect() as conn:
+        for fields in rows:
+            record_id = secrets.token_hex(12)
+            code = _code(conn, 'material', lab)
+            cols = ['id', 'code', 'lab', 'created_by', *fields]
+            conn.execute(f'INSERT INTO material ({", ".join(cols)}) VALUES ({", ".join("?" * len(cols))})',
+                         (record_id, code, lab, person.username, *fields.values()))
+            _log(conn, 'material', record_id, person.username, f'created {code}' + (' (one of several)' if len(rows) > 1 else ''))
+            made.append(record_id)
+    elab.nudge()
+    return made
 
 
 def create(person: Person, kind: str, data: dict) -> str:
@@ -406,7 +527,8 @@ def create_noting(person: Person, kind: str, data: dict):
         if kind == 'chemical' and fields['status'] == 'out':
             from app import orders
             ordered = orders.chemical_status_changed(conn, person, _row(conn, kind, record_id), 'in stock', 'out')
-        return record_id, ordered
+    elab.nudge()
+    return record_id, ordered
 
 
 def update(person: Person, kind: str, ident: str, data: dict) -> Optional[str]:
@@ -422,28 +544,31 @@ def update(person: Person, kind: str, ident: str, data: dict) -> Optional[str]:
     elif kind == 'glycerol' and 'plasmid_id' in fields:
         fields.pop('plasmid_id')            # a link is changed, not taken away
     with connect() as conn:
-        row = visible(conn, person, kind, ident)
+        row = changeable(conn, person, kind, ident)
         changes = [f'{k}: {row[k]!r} → {v!r}' for k, v in fields.items() if row[k] != v]
         if fields:
             conn.execute(f'UPDATE {TABLE[kind]} SET {", ".join(f"{k} = ?" for k in fields)}, '
                          'updated_at = CURRENT_TIMESTAMP WHERE id = ?', (*fields.values(), row['id']))
         if changes:
             _log(conn, kind, row['id'], person.username, '; '.join(changes))
+        ordered = None
         if kind == 'chemical' and fields.get('status', row['status']) != row['status']:
             from app import orders
-            return orders.chemical_status_changed(conn, person, _row(conn, kind, row['id']), row['status'], fields['status'])
-    return None
+            ordered = orders.chemical_status_changed(conn, person, _row(conn, kind, row['id']), row['status'], fields['status'])
+    elab.nudge()
+    return ordered
 
 
 def delete(person: Person, kind: str, ident: str) -> None:
     with connect() as conn:
-        row = visible(conn, person, kind, ident)
+        row = changeable(conn, person, kind, ident)
         conn.execute(f'UPDATE {TABLE[kind]} SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', (row['id'],))
         _log(conn, kind, row['id'], person.username, f'deleted {row["code"]}')
+    elab.nudge()
 
 
 def all_primers(person: Person) -> List[dict]:
     """Every primer of the lab still in stock, with its sequence: for finding where they bind."""
     return [{'code': p['code'], 'name': p['name'], 'sequence': p['sequence'], 'tm': p['tm'],
              'direction': p['direction'], 'location': p['location']}
-            for p in list_records(person, 'primer') if p['status'] == 'in stock']
+            for p in list_records(person, 'primer') if p['status'] == 'in stock' and p['mine']]

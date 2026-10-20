@@ -133,6 +133,12 @@ function formModal({ title, intro, fields, submit, label = 'Save', wide = false 
           input.value = f.value ?? '';
         } else if (f.type === 'checkbox') {
           input = el('input', { type: 'checkbox', checked: !!f.value });
+        } else if (f.type === 'custom') {
+          const made = f.build();
+          inputs[f.name] = { custom: made.get };
+          body.append(el('div', { class: 'field' }, el('span', { class: 'field-label' }, f.label), made.node,
+            f.hint ? el('span', { class: 'hint' }, f.hint) : null));
+          continue;
         } else {
           input = el('input', { type: f.type || 'text', placeholder: f.placeholder || '', list: f.list || null });
           input.value = f.value ?? '';
@@ -150,7 +156,10 @@ function formModal({ title, intro, fields, submit, label = 'Save', wide = false 
       label,
       onClick: async () => {
         const values = {};
-        for (const [k, input] of Object.entries(inputs)) values[k] = input.type === 'checkbox' ? input.checked : input.value.trim();
+        for (const [k, input] of Object.entries(inputs)) {
+          if (input.custom) Object.assign(values, input.custom());
+          else values[k] = input.type === 'checkbox' ? input.checked : input.value.trim();
+        }
         return submit(values);
       },
     }],
@@ -199,12 +208,12 @@ function localTime(stamp) {
 
 
 const today = () => new Date().toISOString().slice(0, 10);
-const ICON = { glycerol: '🧫', primer: '🧬', chemical: '⚗️', antibody: '🔬' };
-const NAME = { glycerol: 'glycerol stock', primer: 'primer', chemical: 'chemical', antibody: 'antibody' };
-const NAMES = { glycerol: 'glycerol stocks', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies' };
-const PLURAL = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies' };
-const SINGULAR = { glycerol: 'glycerol', primers: 'primer', chemicals: 'chemical', antibodies: 'antibody' };
-const TITLE = { glycerol: '🧫 Glycerol stocks', primer: '🧬 Primers', chemical: '⚗️ Chemicals', antibody: '🔬 Antibodies' };
+const ICON = { glycerol: '🧫', primer: '🧬', chemical: '⚗️', antibody: '🔬', material: '🌿' };
+const NAME = { glycerol: 'glycerol stock', primer: 'primer', chemical: 'chemical', antibody: 'antibody', material: 'plant material' };
+const NAMES = { glycerol: 'glycerol stocks', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies', material: 'plant material' };
+const PLURAL = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies', material: 'material' };
+const SINGULAR = { glycerol: 'glycerol', primers: 'primer', chemicals: 'chemical', antibodies: 'antibody', material: 'material' };
+const TITLE = { glycerol: '🧫 Glycerol stocks', primer: '🧬 Primers', chemical: '⚗️ Chemicals', antibody: '🔬 Antibodies', material: '🌿 Plant material' };
 const SDS = 'SDS';
 const FILE_ICONS = { pdf: '📕', word: '📝', powerpoint: '📽️', excel: '📊', archive: '🗜️', sequence: '🧬', text: '📄', image: '🖼️', file: '📎' };
 const fileUrl = (id, download = false) => url(`/api/attachments/${encodeURIComponent(id)}${download ? '?download' : ''}`);
@@ -228,6 +237,10 @@ const App = {
       return;
     }
     document.body.append(el('datalist', { id: 'hosts' }, HOSTS.map((h) => el('option', { value: h }))));
+    const g = this.meta.glycerol;
+    for (const [id, list] of [['permits', g.permits], ['plant-markers', g.plant_markers], ['yeast-markers', g.yeast_markers]]) {
+      document.body.append(el('datalist', { id }, list.map((v) => el('option', { value: v }))));
+    }
     window.addEventListener('hashchange', () => this.route());
     this.route();
   },
@@ -259,7 +272,7 @@ const App = {
 
   route() {
     const hash = location.hash.slice(1) || 'glycerol';
-    const record = hash.match(/^(glycerol|primer|chemical|antibody)=(.+)$/);
+    const record = hash.match(/^(glycerol|primer|chemical|antibody|material)=(.+)$/);
     for (const tab of document.querySelectorAll('.view-tab')) {
       tab.classList.toggle('active', tab.dataset.view === (record ? PLURAL[record[1]] : hash));
     }
@@ -274,13 +287,174 @@ const App = {
     const lab = this.meta.lab;
     return el('p', { class: 'lab-code-line' },
       'Codes in ', el('b', {}, lab.lab.startsWith('user:') ? 'your own stocks' : lab.lab), ' start with ',
-      el('span', { class: 'code-badge' }, `${lab.code}-`), ` (${lab.code}-G glycerol stocks, ${lab.code}-O primers, ${lab.code}-C chemicals, ${lab.code}-A antibodies)`,
+      el('span', { class: 'code-badge' }, `${lab.code}-`), ` (${lab.code}-G glycerol stocks, ${lab.code}-O primers, ${lab.code}-C chemicals, ${lab.code}-A antibodies, ${lab.code}-M plant material)`,
       lab.can_change ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.6rem', onclick: () => formModal({
         title: 'Choose the lab code',
         intro: 'Every code your lab makes starts with it. Keep it the same as in the Seed Bank. It can be chosen until the lab\'s first stock; after that it is fixed, as codes on labels never change.',
         fields: [{ name: 'code', label: 'Lab code', value: lab.code }],
         submit: async (v) => { this.meta.lab = await api('PUT', '/lab', { ...v, lab: lab.lab }); this.route(); },
       }) }, 'Change…') : null);
+  },
+
+  // The lab's chair group: the labs that see each other's stocks. An administrator chooses it, on the suite's dashboard.
+  chairLine() {
+    const line = el('p', { class: 'lab-code-line chair-line' });
+    const lab = this.meta.lab.lab;
+    (async () => {
+      let c;
+      try { c = await api('GET', `/chair?lab=${encodeURIComponent(lab)}`); } catch (e) { return; }
+      this.chair = c.group;
+      if (c.group) {
+        const others = c.group.labs.filter((l) => l.toLowerCase() !== lab.toLowerCase());
+        put(line, 'Chair group ', el('b', {}, c.group.name),
+          others.length ? `: sees the stocks of ${others.join(', ')}, and they see this lab's` : ': no other lab in it yet');
+      }
+      if (this.onChair) this.onChair();
+    })();
+    return line;
+  },
+
+  // The copy in eLabJournal's inventory: how far it is, and for the lab admin, connecting it.
+  elabLine() {
+    const line = el('p', { class: 'lab-code-line elab-line' });
+    const lab = this.meta.lab.lab;
+    const draw = async () => {
+      let s;
+      try { s = await api('GET', `/elab?lab=${encodeURIComponent(lab)}`); } catch (e) { return; }
+      const settings = s.can_set && s.source !== 'settings' ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.6rem',
+        onclick: () => this.connectElab(s, draw) }, s.connected ? 'eLab settings…' : '🔗 Connect to eLabJournal…') : null;
+      if (!s.connected) {
+        if (settings) put(line, 'Keep the lab\'s glycerol stocks and seed lots in eLabJournal\'s inventory too:', settings);
+        else put(line);
+        return;
+      }
+      const failed = s.failed.length;
+      put(line,
+        'Copied to ', el('a', { href: s.url, target: '_blank', rel: 'noopener' }, 'eLabJournal'), ': ',
+        `${s.synced} sent`, s.waiting ? `, ${s.waiting} waiting` : '',
+        s.held ? el('span', { title: 'Archived in eLab (by someone there): no longer sent, and not made again' }, `, ${s.held} archived in eLab`) : '',
+        failed ? el('a', { href: '#', class: 'elab-failed', onclick: (e) => {
+          e.preventDefault();
+          modal({ title: 'Not copied to eLabJournal', build: (body, close) => body.append(el('ul', {},
+            ...s.failed.map((f) => el('li', {}, f.kind === 'seed' ? el('b', {}, f.code)
+              : el('a', { href: `#${f.kind}=${f.code}`, onclick: close }, f.code), ` ${f.error}`)))) });
+        } }, `, ${failed} failed`) : '',
+        s.last_error ? el('span', { class: 'elab-failed' }, ` — ${s.last_error}`) : '',
+        s.can_set ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.6rem', onclick: async () => {
+          try { await api('POST', '/elab/sync', { lab }); } catch (e) { toast(e.message, 'error', 6000); return; }
+          toast('Sending to eLabJournal');
+          setTimeout(draw, 8000);
+        } }, 'Send now') : null,
+        s.can_set ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.4rem', title: 'Bring over what eLab already has: glycerol stocks, plant material, and seed samples to the Seed Bank',
+          onclick: () => this.importElab(s, draw) }, '⇩ Bring over from eLab…') : null,
+        settings);
+    };
+    draw();
+    return line;
+  },
+
+  // Connecting the lab to eLabJournal, step by step: make a token there, paste it, choose what is copied.
+  connectElab(current, done) {
+    const lab = current.lab;
+    const address = el('input', { type: 'url', value: current.url || current.default_url });
+    const token = el('input', { type: 'password', autocomplete: 'off', spellcheck: 'false',
+      placeholder: current.connected ? 'Leave empty to keep the token in use' : 'Paste the token here' });
+    let found = { sample_types: [], fields: {} };
+    const { body, close } = modal({ title: 'Connect to eLabJournal', wide: true, buttons: [], onClose: done });
+    const steps = el('div', { class: 'elab-steps' });
+    const step = (n, title, ...content) => put(steps,
+      el('p', { class: 'elab-step-count' }, `Step ${n} of 3`), el('h3', {}, title), ...content);
+    const nav = (...buttons) => el('div', { class: 'elab-nav' }, ...buttons);
+    const button = (label, onclick, kind = 'primary') => el('button', { class: `btn btn-${kind}`, type: 'button', onclick: async (ev) => {
+      const b = ev.currentTarget;
+      b.disabled = true;
+      try { await onclick(); } catch (e) { toast(e.message, 'error', 7000); } finally { b.disabled = false; }
+    } }, label);
+    const where = lab.startsWith('user:') ? 'your own stocks' : `the stocks of ${lab}`;
+
+    const one = () => step(1, 'Make a token in eLab',
+      el('p', {}, `Lab Stocks adds the glycerol stocks and seed lots of ${where.replace(/^the stocks of /, '')} to eLab with a token, which you make there once.`),
+      el('label', { class: 'field' }, el('span', {}, 'eLab address'), address),
+      el('ol', { class: 'elab-howto' },
+        el('li', {}, button('Open eLabJournal ↗', () => window.open(address.value.trim() || current.default_url, '_blank', 'noopener'), 'secondary'),
+          ' and sign in, in the eLab ', el('b', {}, 'group whose inventory should hold the stocks'), ' (a token works in the group it was made in).'),
+        el('li', {}, 'Open ', el('b', {}, 'Apps & Connections'), ' (in your account menu at the top right).'),
+        el('li', {}, 'On the ', el('b', {}, 'eLab Mobile App'), ' card, click ', el('b', {}, 'Manage Authentication'),
+          '. (The one on the eLabSync card works as well.)'),
+        el('li', {}, 'Make a new token, named for example ', el('code', {}, 'Lab Stocks'), ', and copy it. It may be shown only once.')),
+      el('p', { class: 'hint' }, 'The token adds and changes samples in eLab as you. You can take it back there at any time, under Manage Authentication.'),
+      nav(current.connected ? button('Stop copying…', disconnect, 'danger') : null, el('span', { style: 'flex:1' }),
+        button('Cancel', close, 'secondary'), button('I have the token →', two)));
+
+    const two = () => step(2, 'Paste the token',
+      el('label', { class: 'field' }, el('span', {}, 'Token'), token),
+      el('p', { class: 'hint' }, 'It is tried at once, and kept only in Lab Stocks (and its backups).'),
+      nav(button('← Back', one, 'secondary'), el('span', { style: 'flex:1' }), button('Check the token →', async () => {
+        found = await api('POST', '/elab/check', { lab, url: address.value, token: token.value });
+        toast('eLab accepted the token', 'success');
+        three();
+      })));
+
+    const three = () => {
+      const types = found.sample_types;
+      const has = (name) => types.find((t) => t.toLowerCase() === name.toLowerCase());
+      const rows = current.all_kinds.map(([kind, standard, title]) => {
+        const chosen = has((current.sample_types && current.sample_types[kind]) || standard) || '';
+        const tick = el('input', { type: 'checkbox' });
+        tick.checked = current.connected ? current.kinds.includes(kind) : !!chosen;
+        const select = el('select', {}, el('option', { value: '' }, '— choose —'), ...types.map((n) => el('option', { value: n }, n)));
+        select.value = chosen;
+        // The lab's permit and biosafety level for them, from the options of the sample type chosen.
+        const own = (current.defaults && current.defaults[kind]) || {};
+        const picks = {};
+        const extra = el('div', { class: 'elab-lab-fields' });
+        const drawExtra = () => {
+          const fields = found.fields[select.value] || {};
+          put(extra, current.lab_fields.filter((f) => f in fields).map((f) => {
+            const options = fields[f];
+            const input = options.length
+              ? el('select', {}, el('option', { value: '' }, '— not set —'), ...options.map((o) => el('option', { value: o }, o)))
+              : el('input', { type: 'text' });
+            input.value = picks[f] ? picks[f].value : (own[f] || '');
+            picks[f] = input;
+            return el('label', {}, `${f} `, input);
+          }));
+        };
+        select.addEventListener('change', () => { tick.checked = !!select.value; drawExtra(); });
+        drawExtra();
+        return { kind, tick, select, picks, row: el('tr', {}, el('td', {}, el('label', {}, tick, ` ${title}`)), el('td', {}, select, extra)) };
+      });
+      step(3, 'Choose what to copy',
+        el('p', {}, 'eLab accepted the token. Each ticked goes to one of the group\'s sample types, in the fields it has: ',
+          'nothing is added to them. Choose the permit and biosafety level the lab\'s samples are kept under.'),
+        el('table', { class: 'data elab-kinds' }, el('thead', {}, el('tr', {}, el('th', {}, 'Copy'), el('th', {}, 'To sample type in eLab'))),
+          el('tbody', {}, ...rows.map((r) => r.row))),
+        el('p', { class: 'hint' }, 'Copying goes one way: change glycerol stocks here and seed lots in the Seed Bank, and eLab follows. ',
+          'What is used up, discarded or deleted is archived there; changes made in eLab are overwritten by the next change here.'),
+        nav(button('← Back', two, 'secondary'), el('span', { style: 'flex:1' }), button(current.connected ? 'Save' : 'Connect and copy', async () => {
+          const ticked = rows.filter((r) => r.tick.checked);
+          const missing = ticked.find((r) => !r.select.value);
+          if (missing) throw new Error('Choose the sample type for each thing ticked');
+          const s = await api('PUT', '/elab', { lab, url: address.value, token: token.value, kinds: ticked.map((r) => r.kind),
+            sample_types: Object.fromEntries(ticked.map((r) => [r.kind, r.select.value])),
+            defaults: Object.fromEntries(ticked.map((r) => [r.kind, Object.fromEntries(Object.entries(r.picks).map(([f, i]) => [f, i.value]))])) });
+          put(steps, el('h3', {}, '✓ Connected to eLabJournal'),
+            el('p', {}, `The first copy starts now: ${s.waiting} to send. The line above the list says how far it is; `,
+              'anything eLab refuses is listed there with the reason.'),
+            nav(el('span', { style: 'flex:1' }), button('Close', close)));
+        })));
+    };
+
+    async function disconnect() {
+      if (!steps.querySelector('.elab-confirm')) {
+        steps.append(el('p', { class: 'elab-confirm elab-failed' },
+          'Stop copying? What is already in eLab stays there, but no longer follows changes here. ',
+          button('Yes, stop copying', async () => { await api('DELETE', '/elab', { lab }); toast('No longer copied to eLabJournal'); close(); }, 'danger')));
+      }
+    }
+
+    body.append(steps);
+    one();
   },
 
   async showList(kind) {
@@ -291,6 +465,7 @@ const App = {
         primer: 'Search by code, name, target, place, or a piece of the sequence (e.g. GGCCAGT)',
         chemical: 'Search by code, name, CAS number, room or size',
         antibody: 'Search by code, short code, description, producer, animal, product number or notes',
+        material: 'Search by code, name, tissue, species, plant, experiment, who collected it, or where it is',
       }[kind] });
     const table = el('div', { class: 'list' });
     const labelBtn = el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([...this.selected]) }, '🏷 Labels for selected');
@@ -307,10 +482,25 @@ const App = {
         orderBtn.textContent = `🛒 Add selected to order${n ? ` (${n})` : ''}`;
       }
     };
+    // The other labs of the chair group: shown on request, remembered.
+    let wide = false;
+    try { wide = localStorage.getItem('stocks.chairWide') === '1'; } catch (e) { /* no storage */ }
+    const wideBox = el('input', { type: 'checkbox', onchange: () => {
+      wide = wideBox.checked;
+      try { localStorage.setItem('stocks.chairWide', wide ? '1' : '0'); } catch (e) { /* no storage */ }
+      draw();
+    } });
+    wideBox.checked = wide;
+    const wideToggle = el('label', { class: 'chair-toggle', hidden: true }, wideBox, ' ');
+    this.onChair = () => {
+      if (!this.chair || this.chair.labs.length < 2) return;
+      put(wideToggle, wideBox, ` Show the stocks of the other labs of ${this.chair.name}`);
+      wideToggle.hidden = false;
+    };
     const draw = async () => {
       this[`q_${kind}`] = query.value;
       const data = await api('GET', `/${PLURAL[kind]}?q=${encodeURIComponent(query.value)}`);
-      put(table, this.listTable(kind, data[PLURAL[kind]]));
+      put(table, this.listTable(kind, data[PLURAL[kind]].filter((r) => r.mine || wide)));
     };
     let timer;
     query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
@@ -318,16 +508,21 @@ const App = {
       el('div', { class: 'page-head' }, el('h1', {}, TITLE[kind]),
         el('span', { class: 'actions' },
           el('button', { class: 'btn btn-primary', onclick: () => ({ glycerol: () => this.newGlycerol(), primer: () => this.editPrimer(),
-            chemical: () => this.editChemical(), antibody: () => this.editAntibody() })[kind]() },
-          { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical', antibody: '＋ Antibody' }[kind]), orderBtn, labelBtn)),
+            chemical: () => this.editChemical(), antibody: () => this.editAntibody(), material: () => this.editMaterial() })[kind]() },
+          { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical', antibody: '＋ Antibody', material: '＋ Tube' }[kind]),
+          kind === 'material' ? el('button', { class: 'btn btn-primary', title: 'Many tubes at once: numbered, or a pasted list, and their places in a box',
+            onclick: () => this.boxOfTubes() }, '📦 Box of tubes…') : null, orderBtn, labelBtn)),
       this.labCodeLine(),
+      this.chairLine(),
+      this.elabLine(),
       el('p', { class: 'hint' }, {
         glycerol: 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the next number.',
         primer: 'The lab\'s oligos, with where each tube is. Primers designed in the Plasmid Editor can be saved here, and the editor shows which of them bind a plasmid.',
         chemical: 'The lab\'s chemicals, with the room each is kept in. Open one to add its safety data sheet (SDS).',
         antibody: 'The lab\'s antibodies: primary and secondary, who makes each, the animal it is raised in, and how to use it.',
+        material: 'Plant material kept for later processing: a tube each, often a box of them. Link a tube from the notebook by its code; add a whole box at once with 📦 Box of tubes.',
       }[kind], kind === 'chemical' ? this.safetyLinks() : null),
-      query, table);
+      el('div', { class: 'list-tools' }, query, wideToggle), table);
     await draw();
     this.onSelection();
     query.focus();
@@ -346,6 +541,7 @@ const App = {
       primer: ['', 'Code', 'Name', 'Sequence (5′→3′)', 'nt', 'Tm', 'Kept in', 'Status'],
       chemical: ['', 'Code', 'Name', 'CAS number', 'Room', 'Size', 'SDS', 'Out'],
       antibody: ['', 'Code', 'Short code', 'Description', 'Type', 'Producer', 'Source animal', 'Product number', 'Notes about the use', 'Status'],
+      material: ['', 'Code', 'Name', 'Tissue', 'Species / plant', 'Collected', 'Experiment', 'Kept in', 'Status'],
     }[kind];
     const cells = {
       glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
@@ -353,14 +549,19 @@ const App = {
       primer: (r) => [r.name, el('span', { class: 'mono' }, r.sequence), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, [r.status, this.onOrderMark(r)]],
       chemical: (r) => [r.name, el('span', { class: 'mono' }, r.cas), r.room, r.size,
         r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'),
-        [r.status === 'discarded' ? 'discarded' : this.outToggle(r), this.onOrderMark(r)]],
+        [r.status === 'discarded' || !r.mine ? r.status : this.outToggle(r), this.onOrderMark(r)]],
       antibody: (r) => [el('b', {}, r.short_code), r.description, r.type, r.producer, r.host, el('span', { class: 'mono' }, r.product_number),
         el('span', { class: 'clip', title: r.notes }, r.notes), [r.status, this.onOrderMark(r)]],
+      material: (r) => [el('b', {}, r.name), r.tissue, [r.species, r.from_plant].filter(Boolean).join(' · '),
+        [r.collected_on, r.collected_by].filter(Boolean).join(' · '), r.experiment,
+        r.elab_layer_path ? `${r.elab_layer_path.split(' / ').slice(-2).join(' / ')}${r.elab_position ? ` · ${r.elab_position}` : ''}` : r.location, r.status],
     }[kind];
     return el('table', { class: 'data' },
       el('thead', {}, el('tr', {}, head.map((h) => el('th', {}, h)))),
       el('tbody', {}, rows.map((r) => el('tr', { class: `clickable ${r.status !== 'in stock' ? 'faded' : ''}`, onclick: () => { location.hash = `${kind}=${r.code}`; } },
-        el('td', { class: 'pick' }, this.pick(r.code)), el('td', { class: 'code' }, r.code), cells(r).map((c) => el('td', {}, c))))));
+        el('td', { class: 'pick' }, this.pick(r.code)),
+        el('td', { class: 'code' }, r.code, r.mine ? null : el('span', { class: 'lab-tag', title: `${r.lab}'s: you see it, ${r.lab} changes it` }, r.lab)),
+        cells(r).map((c) => el('td', {}, c))))));
   },
 
   openLabels(codes) {
@@ -381,19 +582,43 @@ const App = {
     }
     this.rec = rec;
     put(main, { glycerol: () => this.glycerolView(rec), primer: () => this.primerView(rec), chemical: () => this.chemicalView(rec),
-      antibody: () => this.antibodyView(rec) }[kind](),
+      antibody: () => this.antibodyView(rec), material: () => this.materialView(rec) }[kind](), this.elabFact(rec),
       this.files(rec), this.mentions(rec), this.history(rec));
   },
 
   reload() { this.showRecord(this.rec.kind, this.rec.code); },
+
+  /** Where the record is in eLab: a link to its sample there, and how it stands. */
+  elabFact(rec) {
+    const e = rec.elab;
+    if (!e) return null;
+    const link = e.url ? el('a', { href: e.url, target: '_blank', rel: 'noopener', title: 'Open its sample in eLab' }, `sample ${e.sample_id} ↗`) : null;
+    const again = e.state === 'archived in eLab' ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.5rem',
+      title: 'If it was restored in eLab, it goes on following changes there; if not, a new sample is made',
+      onclick: async () => {
+        try {
+          const res = await api('POST', `/${PLURAL[rec.kind]}/${rec.code}/elab-again`);
+          toast(res.restored ? 'Restored in eLab: changes go to it again' : 'A new sample is being made in eLab', 'success', 5000);
+          setTimeout(() => this.reload(), 4000);
+        } catch (err) { toast(err.message, 'error', 6000); }
+      } }, 'Send to eLab again') : null;
+    const said = {
+      sent: ['✓ sent', ''], waiting: ['waiting to be sent', ''], 'not sent': ['not in eLab yet', ''],
+      failed: ['not sent', ` (${e.error || 'eLab refused it'})`], archived: ['archived there', ' (used up, discarded or deleted here)'],
+      'archived in eLab': ['archived in eLab', ' (by someone there): no longer sent. Restore it there (open it, then Restore), or send it again'],
+    }[e.state] || [e.state, ''];
+    return el('p', { class: `elab-fact ${e.state === 'failed' ? 'elab-failed' : ''}` }, '🔗 In eLabJournal: ', link, link ? ' · ' : '', el('b', {}, said[0]), said[1], again);
+  },
 
   head(rec, title, subtitle, actions) {
     return el('div', { class: 'record-head' },
       el('div', {}, el('div', { class: 'crumbs' }, el('a', { href: `#${PLURAL[rec.kind]}` }, `${ICON[rec.kind]} All ${NAMES[rec.kind]}`)),
         el('h1', {}, el('span', { class: 'code-badge' }, rec.code), ' ', title),
         subtitle ? el('div', { class: 'hint' }, subtitle) : null, this.onOrder(rec)),
+      rec.mine ? null : el('p', { class: 'not-mine' }, `${rec.lab}'s, in your chair group: you see it, only ${rec.lab} changes it.`),
+      !rec.mine ? el('span', { class: 'actions' }, el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, '🏷 Label')) :
       el('span', { class: 'actions' }, actions,
-        rec.kind === 'glycerol' ? null : el('button', { class: 'btn btn-secondary', title: 'Put it on the lab\'s order list, with its details',
+        ['glycerol', 'material'].includes(rec.kind) ? null : el('button', { class: 'btn btn-secondary', title: 'Put it on the lab\'s order list, with its details',
           onclick: () => this.orderStock(rec) }, '🛒 Add to order'),
         el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, '🏷 Label'),
         el('button', { class: 'btn btn-secondary', title: 'Delete', onclick: () => modal({
@@ -419,9 +644,24 @@ const App = {
       { name: 'host', label: 'Strain', value: rec?.host, list: 'hosts', placeholder: 'e.g. DH5α, GV3101' },
       { name: 'selection', label: 'Selection', value: rec?.selection, placeholder: 'e.g. kanamycin 50 µg/mL' },
       { name: 'location', label: 'Kept in', value: rec?.location, placeholder: 'e.g. −80 °C freezer 1 / box 3 / B4' },
+      { name: 'elab_storage', label: 'Storage location (eLab)', type: 'custom', build: () => this.storagePicker(rec) },
       { name: 'made_on', label: 'Made on', type: 'date', value: rec?.made_on || today() },
       { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' },
       { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
+      // Biosafety, for the GMO register (and eLab's Glycerol Stock): empty is the lab's, or from the strain.
+      { name: 'permit', label: 'Permit', value: rec?.permit, list: 'permits', placeholder: 'empty: the lab\'s (chosen with eLab)' },
+      { name: 'biosafety', label: 'Biosafety level', type: 'select', value: rec?.biosafety,
+        options: this.meta.glycerol.biosafety.map((v) => [v, v || '— the lab\'s —']) },
+      { name: 'host_system', label: 'Host system', type: 'select', value: rec?.host_system,
+        options: this.meta.glycerol.host_systems.map((v) => [v, v || '— from the strain —']) },
+      { name: 'plant_markers', label: 'Plant markers', value: rec?.plant_markers, list: 'plant-markers', placeholder: 'e.g. BASTA, Hygromycin' },
+      { name: 'yeast_markers', label: 'Yeast markers', value: rec?.yeast_markers, list: 'yeast-markers', placeholder: 'e.g. Ura-, Leu-' },
+      { name: 'inserts', label: 'Insert(s)?', type: 'select', value: rec?.inserts, options: this.meta.glycerol.yes_no },
+      { name: 'gene_ids', label: 'Gene ID(s)', value: rec?.gene_ids, placeholder: 'e.g. AT1G01060' },
+      { name: 'donor', label: 'Donor organism(s)', value: rec?.donor, placeholder: 'e.g. Arabidopsis thaliana' },
+      { name: 'harmful', label: 'Harmful gene product?', type: 'select', value: rec?.harmful, options: this.meta.glycerol.harmful },
+      { name: 'harmful_notes', label: 'Remarks on harmful effects', type: 'textarea', value: rec?.harmful_notes,
+        placeholder: 'e.g. toxic, transposase activity' },
     ];
   },
 
@@ -450,6 +690,7 @@ const App = {
       title: `Glycerol stock of ${plasmid.name}`,
       intro: 'Usually made for you on confirming a plasmid by sequencing in the Plasmid Editor; add one here for stocks made otherwise.',
       fields: this.glycerolFields(null),
+      wide: true,
       submit: async (v) => {
         const { record } = await api('POST', '/glycerol', { ...v, plasmid_id: plasmid.id, plasmid_name: plasmid.name, lab: this.chosenLab });
         location.hash = `glycerol=${record.code}`;
@@ -478,7 +719,7 @@ const App = {
             title: open ? 'Link this stock to another plasmid of the editor\'s library' : 'Link this stock to its plasmid in the editor\'s library' },
           open ? '🔗 Change plasmid…' : '🔗 Link a plasmid…'),
           el('button', { class: 'btn btn-secondary', onclick: () => formModal({
-            title: `Edit ${rec.code}`, fields: this.glycerolFields(rec),
+            title: `Edit ${rec.code}`, fields: this.glycerolFields(rec), wide: true,
             submit: async (v) => { await api('PUT', `/glycerol/${rec.code}`, v); this.reload(); },
           }) }, '✎ Edit')]),
       this.facts([
@@ -486,10 +727,361 @@ const App = {
         ['Sequencing', open ? el('a', { href: `${ST.editor}/sequencing?sequence=${encodeURIComponent(rec.plasmid_id)}`, target: '_blank', rel: 'noopener' },
           rec.source === 'sequencing' ? '✓ confirmed by sequencing: see the reads' : 'see the reads') : null],
         ['Clone', rec.clone], ['Strain', rec.host], ['Selection', rec.selection], ['Kept in', rec.location],
+        ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
         ['Made on', rec.made_on], ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null,
+      this.section('Biosafety', this.facts([
+        ['Permit', rec.permit || el('span', { class: 'hint' }, 'the lab\'s')],
+        ['Biosafety level', rec.biosafety || el('span', { class: 'hint' }, 'the lab\'s')],
+        ['Host system', rec.host_system || el('span', { class: 'hint' }, 'from the strain')],
+        ['Plant markers', rec.plant_markers], ['Yeast markers', rec.yeast_markers],
+        ['Insert(s)?', rec.inserts], ['Gene ID(s)', rec.gene_ids], ['Donor organism(s)', rec.donor],
+        ['Harmful gene product?', rec.harmful], ['Remarks on harmful effects', rec.harmful_notes]])),
       rec.same_plasmid?.length ? this.section('Other stocks of this plasmid', el('div', { class: 'chips' },
         rec.same_plasmid.map((s) => el('a', { class: 'chip', href: `#glycerol=${s.code}` }, `🧫 ${s.code}${s.clone ? ` clone ${s.clone}` : ''} · ${s.status}`)))) : null);
+  },
+
+  /**
+   * Where a glycerol stock is kept in eLab's storage: one of the group's locations (a freezer's tower, a
+   * box, a place in a box), or a new one added there. Gives {node, get}; get() the stock's fields.
+   */
+  storagePicker(rec) {
+    const lab = rec?.lab || this.meta.lab.lab;
+    const chosen = { id: rec?.elab_layer_id || '', path: rec?.elab_layer_path || '', position: rec?.elab_position || '' };
+    let places = [];
+    let kinds = {};
+    const node = el('div', { class: 'storage-picker' }, el('span', { class: 'hint' }, 'Asking eLab for its storage…'));
+    const filter = el('input', { type: 'search', placeholder: 'Find a location: freezer, tower, box…' });
+    const select = el('select', { size: 6 });
+    const place = el('input', { type: 'text', placeholder: 'e.g. B3 or 12' });
+    const placeRow = el('label', { class: 'storage-place' }, 'Place in the box ', place);
+    const label = (p) => p.path.slice(p.unit.length + 3) || '(the whole unit)';
+    const at = (id) => places.find((p) => String(p.id) === String(id));
+    const draw = () => {
+      const q = filter.value.trim().toLowerCase();
+      const units = [...new Set(places.map((p) => p.unit))];
+      put(select, el('option', { value: '' }, '— none —'), units.map((u) => {
+        const shown = places.filter((p) => p.unit === u && (!q || p.path.toLowerCase().includes(q) || String(p.id) === String(chosen.id)));
+        return shown.length ? el('optgroup', { label: u }, shown.map((p) => el('option', { value: p.id }, `${p.grid ? '▦ ' : ''}${label(p)}`))) : null;
+      }));
+      select.value = chosen.id;
+      const p = at(chosen.id);
+      placeRow.hidden = !(p && p.grid);
+      if (p && p.grid) place.placeholder = `1–${p.rows * p.columns}` + (p.lettered ? `, or A1–${String.fromCharCode(64 + p.rows)}${p.columns}` : '');
+    };
+    filter.addEventListener('input', draw);
+    select.addEventListener('change', () => {
+      const p = at(select.value);
+      chosen.id = select.value;
+      chosen.path = p ? p.path : '';
+      if (!p || !p.grid) place.value = '';
+      draw();
+    });
+    place.value = chosen.position;
+
+    // A new location in eLab, under the one chosen.
+    const name = el('input', { type: 'text', placeholder: 'e.g. Box 12 glycerol stocks' });
+    const kind = el('select', {});
+    const under = el('span', { class: 'hint' });
+    const adder = el('div', { class: 'storage-new', hidden: true }, el('div', {}, 'New location in eLab, under ', under),
+      el('label', {}, 'Name ', name), el('label', {}, 'Kind ', kind),
+      el('button', { class: 'btn btn-secondary btn-sm', type: 'button', onclick: async (ev) => {
+        const b = ev.currentTarget;
+        b.disabled = true;
+        try {
+          const { location: made } = await api('POST', '/elab/locations', { lab, parent: chosen.id, name: name.value, kind: kind.value });
+          ({ locations: places, kinds } = await api('GET', `/elab/locations?lab=${encodeURIComponent(lab)}`));
+          chosen.id = String(made.id);
+          chosen.path = made.path;
+          adder.hidden = true;
+          name.value = '';
+          filter.value = '';
+          draw();
+          toast(`Added ${made.path} in eLab`, 'success', 4000);
+        } catch (e) { toast(e.message, 'error', 7000); } finally { b.disabled = false; }
+      } }, 'Add it in eLab'));
+    const openAdder = () => {
+      const p = at(chosen.id);
+      if (!p) { toast('First choose where in eLab the new location goes: a freezer, a tower, a shelf…', 'error', 5000); return; }
+      if (p.grid) { toast(`${p.path} is a box with places: choose the tower or shelf it is in`, 'error', 5000); return; }
+      const fits = (kinds[p.storage_id] || []).filter((k) => k.level === p.level + 1);
+      if (!fits.length) { toast(`${p.unit} has no kind of location under ${label(p)}`, 'error', 5000); return; }
+      put(under, p.path);
+      put(kind, fits.map((k) => el('option', { value: k.id }, `${k.name}${k.grid ? ` (box, ${k.rows} × ${k.columns})` : ''}`)));
+      adder.hidden = false;
+      name.focus();
+    };
+
+    (async () => {
+      let found;
+      try { found = await api('GET', `/elab/locations?lab=${encodeURIComponent(lab)}`); } catch (e) {
+        put(node, el('span', { class: 'hint' }, `eLab's storage could not be read: ${e.message}`));
+        return;
+      }
+      if (!found.connected) {
+        put(node, el('span', { class: 'hint' }, 'Connect the lab to eLabJournal to choose where it is kept there.'));
+        return;
+      }
+      ({ locations: places, kinds } = found);
+      if (chosen.id && !at(chosen.id)) places.unshift({ id: chosen.id, path: chosen.path || `eLab location ${chosen.id}`, unit: '(no longer in eLab)', level: 0 });
+      draw();
+      put(node, filter, select, placeRow,
+        el('div', { class: 'storage-actions' },
+          el('button', { class: 'btn btn-secondary btn-sm', type: 'button', onclick: openAdder }, '＋ New location under the one chosen…'),
+          el('button', { class: 'btn btn-secondary btn-sm', type: 'button', title: 'Read eLab\'s storage again', onclick: async () => {
+            ({ locations: places, kinds } = await api('GET', `/elab/locations?lab=${encodeURIComponent(lab)}&refresh=1`));
+            draw();
+          } }, '↻')),
+        adder);
+    })();
+
+    return {
+      node,
+      current: () => at(chosen.id),
+      get: () => {
+        const p = at(chosen.id);
+        let n = '';
+        if (p && p.grid && place.value.trim()) {
+          const v = place.value.trim().toUpperCase();
+          // A place is its number in eLab, counted along the rows; a box with lettered rows also takes B3.
+          const m = p.lettered && v.match(/^([A-Z])\s*(\d+)$/);
+          n = m ? (m[1].charCodeAt(0) - 65) * p.columns + Number(m[2]) : /^\d+$/.test(v) ? Number(v) : 0;
+          if (!(n >= 1 && n <= p.rows * p.columns) || (m && Number(m[2]) > p.columns)) {
+            throw new Error(`A place in ${label(p)} is 1 to ${p.rows * p.columns}` + (p.lettered ? `, or A1 to ${String.fromCharCode(64 + p.rows)}${p.columns}` : ''));
+          }
+        }
+        // Not read from eLab (not connected, or eLab away): left as it was.
+        if (!places.length) return {};
+        return { elab_layer_id: chosen.id, elab_layer_path: chosen.id ? chosen.path : '', elab_position: n ? String(n) : '' };
+      },
+    };
+  },
+
+  /* plant material ------------------------------------------------------------------ */
+
+  materialFields(rec, many = false) {
+    if (!document.getElementById('tissues')) {
+      document.body.append(el('datalist', { id: 'tissues' }, this.meta.tissues.map((t) => el('option', { value: t }))));
+    }
+    return [
+      ...(many ? [] : [{ name: 'name', label: 'Name (on the tube)', value: rec?.name, placeholder: 'e.g. P130-34 F3' }]),
+      { name: 'tissue', label: 'Tissue', value: rec?.tissue, list: 'tissues', placeholder: 'e.g. leaf, flower' },
+      { name: 'species', label: 'Species', value: rec?.species, placeholder: 'e.g. Petunia W138' },
+      { name: 'from_plant', label: 'From plant', value: rec?.from_plant, placeholder: 'e.g. a Seed Bank plant code, GARD-P-0012' },
+      { name: 'description', label: 'Description', value: rec?.description, placeholder: 'e.g. Petunia W138 flower tissue' },
+      { name: 'collected_on', label: 'Collected on', type: 'date', value: rec ? rec.collected_on : today() },
+      { name: 'collected_by', label: 'Collected by', value: rec ? rec.collected_by : ST.person.username },
+      { name: 'experiment', label: 'Experiment', value: rec?.experiment, placeholder: 'e.g. scent time course, day 3' },
+      { name: 'location', label: 'Kept in', value: rec?.location, placeholder: 'e.g. −80 °C freezer 1 / box 3' },
+      ...(many ? [] : [{ name: 'elab_storage', label: 'Storage location (eLab)', type: 'custom', build: () => this.storagePicker(rec) },
+        { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' }]),
+      { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
+    ];
+  },
+
+  editMaterial(rec) {
+    formModal({
+      title: rec ? `Edit ${rec.code}` : 'New tube of plant material', wide: true,
+      intro: rec ? null : 'One tube. For a box of them at once, use 📦 Box of tubes.',
+      fields: this.materialFields(rec),
+      submit: async (v) => {
+        const res = rec ? await api('PUT', `/material/${rec.code}`, v) : await api('POST', '/material', { ...v, lab: this.chosenLab });
+        if (rec) this.reload(); else location.hash = `material=${res.record.code}`;
+        toast(rec ? 'Saved' : `Made ${res.record.code}`, 'success');
+      },
+    });
+  },
+
+  materialView(rec) {
+    return el('div', {},
+      this.head(rec, rec.name, [rec.tissue, rec.species, rec.status].filter(Boolean).join(' · '), [
+        el('button', { class: 'btn btn-secondary', onclick: () => this.editMaterial(rec) }, '✎ Edit')]),
+      this.facts([['Name on the tube', rec.name], ['Tissue', rec.tissue], ['Species', rec.species], ['From plant', rec.from_plant],
+        ['Description', rec.description], ['Collected', [rec.collected_on, rec.collected_by && `by ${rec.collected_by}`].filter(Boolean).join(' ')],
+        ['Experiment', rec.experiment], ['Kept in', rec.location],
+        ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
+        ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
+      rec.notes ? el('p', { class: 'description' }, rec.notes) : null);
+  },
+
+  /** A box of tubes at once: named in a row (L2201-1 … L2201-81) or pasted as a list, filling a box's places in order. */
+  boxOfTubes() {
+    let picker;
+    const tubes = () => {
+      const prefix = el('input', { type: 'text', placeholder: 'e.g. L2201-' });
+      const from = el('input', { type: 'number', value: 1, min: 0, style: 'width:6rem' });
+      const to = el('input', { type: 'number', value: 81, min: 0, style: 'width:6rem' });
+      const suffix = el('input', { type: 'text', placeholder: 'e.g. L1', style: 'width:8rem' });
+      const pad = el('input', { type: 'number', value: 0, min: 0, max: 6, style: 'width:4rem', title: 'Digits, padded with zeros (0: as they are)' });
+      const list = el('textarea', { rows: 6, placeholder: 'One tube a line, e.g. pasted from a spreadsheet:\nP130-34 F3\nP130-34 F4\n… (a second column, after a tab, is its description)' });
+      const preview = el('p', { class: 'hint' });
+      const mode = { value: 'row' };
+      const rowBox = el('div', { class: 'tube-row' }, 'Named ', prefix, el('span', {}, 'number from '), from, el('span', {}, 'to '), to,
+        el('span', {}, 'then '), suffix, el('span', {}, 'digits '), pad);
+      const listBox = el('div', { hidden: true }, list);
+      const names = () => {
+        if (mode.value === 'list') {
+          return list.value.split('\n').map((l) => l.split('\t')).filter((c) => c[0].trim())
+            .map((c) => ({ name: c[0].trim(), ...(c[1] && c[1].trim() ? { description: c[1].trim() } : {}) }));
+        }
+        const a = Number(from.value), b = Number(to.value), d = Number(pad.value) || 0;
+        if (!Number.isFinite(a) || !Number.isFinite(b) || b < a || b - a >= 500) return [];
+        return Array.from({ length: b - a + 1 }, (_, i) => ({ name: `${prefix.value}${String(a + i).padStart(d, '0')}${suffix.value}` }));
+      };
+      const show = () => {
+        const n = names();
+        put(preview, n.length ? `${n.length} tube${n.length === 1 ? '' : 's'}: ${n.slice(0, 3).map((t) => t.name).join(', ')}${n.length > 3 ? ` … ${n[n.length - 1].name}` : ''}` : 'No tubes yet');
+      };
+      for (const i of [prefix, from, to, suffix, pad, list]) i.addEventListener('input', show);
+      const pick = (m) => { mode.value = m; rowBox.hidden = m !== 'row'; listBox.hidden = m !== 'list'; show(); };
+      show();
+      return {
+        node: el('div', { class: 'tubes' },
+          el('div', { class: 'tube-modes' },
+            el('label', {}, el('input', { type: 'radio', name: 'tube-mode', checked: true, onchange: () => pick('row') }), ' Numbered'),
+            el('label', {}, el('input', { type: 'radio', name: 'tube-mode', onchange: () => pick('list') }), ' Paste a list')),
+          rowBox, listBox, preview),
+        get: () => ({ _tubes: names() }),
+      };
+    };
+    formModal({
+      title: 'A box of tubes', wide: true,
+      intro: 'Many tubes of plant material at once. What is filled in below goes on every tube; in a box with places in eLab, they fill its places in order from the one given (or 1).',
+      fields: [{ name: 'tubes', label: 'Tubes', type: 'custom', build: tubes }, ...this.materialFields(null, true),
+        { name: 'elab_storage', label: 'Storage location (eLab): the box', type: 'custom', build: () => { picker = this.storagePicker(null); return picker; } }],
+      label: 'Make the tubes',
+      submit: async (v) => {
+        const { _tubes: list, elab_layer_id: layer, elab_layer_path: path, elab_position: start, ...shared } = v;
+        if (!list.length) throw new Error('Name the tubes: numbered, or a pasted list');
+        const box = picker.current();
+        const first = Number(start) || 1;
+        if (box && box.grid && first + list.length - 1 > box.rows * box.columns) {
+          throw new Error(`${list.length} tubes from place ${first} do not fit in ${box.path} (${box.rows * box.columns} places)`);
+        }
+        const items = list.map((t, i) => ({ ...t, ...(layer ? { elab_layer_id: layer, elab_layer_path: path,
+          elab_position: box && box.grid ? String(first + i) : '' } : {}) }));
+        const res = await api('POST', '/material/many', { items, shared, lab: this.chosenLab });
+        toast(`Made ${res.material.length} tubes: ${res.material[0].code} to ${res.material[res.material.length - 1].code}`, 'success', 5000);
+        location.hash = 'material';
+        this.route();
+      },
+    });
+  },
+
+  /* bringing over from eLab ----------------------------------------------------------- */
+
+  /** What eLab already has, brought over and linked: its plant material here, its seed samples to the Seed Bank. */
+  importElab(status, done) {
+    const lab = status.lab;
+    const seedsApi = async (method, path, body) => {
+      const res = await fetch(`${ST.seeds}/api${path}`, { method, credentials: 'same-origin',
+        headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`Seed Bank: ${data.error || res.status}`);
+      return data;
+    };
+    let kind = 'glycerol';
+    let samples = [];
+    const owners = el('div', { class: 'import-owners' });
+    const where = el('input', { type: 'search', placeholder: 'Only those kept in… e.g. Tower N, Gardiner Lab' });
+    const summary = el('p', {});
+    const table = el('div', { class: 'import-preview' });
+    const progress = el('p', { class: 'hint' });
+    const ticked = new Set();
+    const chosen = () => samples.filter((s) => ticked.has(s.owner) && (!where.value.trim() || s.path.toLowerCase().includes(where.value.trim().toLowerCase())));
+    const groups = (list) => {
+      const by = new Map();
+      for (const s of list) {
+        const key = (s.note || s.name).slice(0, 200);
+        if (!by.has(key)) by.set(key, []);
+        by.get(key).push(s);
+      }
+      return by;
+    };
+    const draw = () => {
+      const list = chosen();
+      put(summary, {
+        seed: `${list.length} seed samples → ${groups(list).size} lines in the Seed Bank (one per cross or note), each sample a seed lot`,
+        material: `${list.length} samples → ${list.length} tubes of plant material here, in their places in eLab's storage`,
+        glycerol: `${list.length} samples → ${list.length} glycerol stocks here, in their places in eLab's storage, each linked to the plasmid of its name in the Plasmid Editor when there is one`,
+      }[kind]);
+      const cols = { seed: ['Note (the line)', 'Species', (s) => s.note, (s) => s.species],
+        material: ['Description', 'Note', (s) => s.description, (s) => s.note],
+        glycerol: ['Strain', 'Selection', (s) => s.strain, (s) => s.selection] }[kind];
+      put(table, list.length ? el('table', { class: 'data' },
+        el('thead', {}, el('tr', {}, ['eLab name', 'Owner', cols[0], cols[1], 'Kept in'].map((h) => el('th', {}, h)))),
+        el('tbody', {}, list.slice(0, 12).map((s) => el('tr', {}, el('td', { class: 'code' }, s.name), el('td', {}, s.owner),
+          el('td', {}, cols[2](s)), el('td', {}, cols[3](s)),
+          el('td', {}, `${s.path.split(' / ').slice(-2).join(' / ')}${s.position ? ` · ${s.position}` : ''}`)))),
+        list.length > 12 ? el('tfoot', {}, el('tr', {}, el('td', { colspan: 5, class: 'hint' }, `… and ${list.length - 12} more`))) : null) : null);
+    };
+    where.addEventListener('input', draw);
+    let asked = 0;
+    const load = async (refresh = false) => {
+      const mine = ++asked;          // only the latest answer counts, should the choice change meanwhile
+      put(summary, 'Asking eLab… (with thousands of samples in the group, this can take a minute)');
+      put(owners);
+      put(table);
+      const found = await api('GET', `/elab/import?lab=${encodeURIComponent(lab)}&kind=${kind}${refresh ? '&refresh=1' : ''}`);
+      if (mine !== asked) return;
+      samples = found.samples;
+      ticked.clear();
+      put(owners, el('span', { class: 'hint' }, 'Owned in eLab by: '), found.owners.map(([o, n]) => el('label', { class: 'chip' },
+        el('input', { type: 'checkbox', checked: ticked.has(o), onchange: (e) => { if (e.target.checked) ticked.add(o); else ticked.delete(o); draw(); } }),
+        ` ${o || '(nobody)'} (${n})`)));
+      draw();
+    };
+    const run = async () => {
+      const list = chosen();
+      if (!list.length) throw new Error('Choose whose samples to bring over');
+      if (kind === 'glycerol') {
+        put(progress, `Bringing over ${list.length} glycerol stocks…`);
+        const res = await api('POST', '/elab/import/glycerol', { lab, ids: list.map((s) => s.id) });
+        toast(`Brought over ${res.made} glycerol stocks, linked to eLab${res.plasmids ? `; ${res.plasmids} linked to their plasmid` : ''}`, 'success', 6000);
+      } else if (kind === 'material') {
+        put(progress, `Bringing over ${list.length} tubes…`);
+        const res = await api('POST', '/elab/import/material', { lab, ids: list.map((s) => s.id) });
+        toast(`Brought over ${res.made} tubes of plant material, linked to eLab`, 'success', 6000);
+      } else {
+        const existing = new Map((await seedsApi('GET', '/lines')).lines.filter((l) => l.lab === lab).map((l) => [l.name, l]));
+        let lots = 0;
+        let n = 0;
+        for (const [name, members] of groups(list)) {
+          n += 1;
+          put(progress, `Line ${n} of ${groups(list).size}: ${name}`);
+          let line = existing.get(name);
+          if (!line) {
+            line = (await seedsApi('POST', '/lines', { name, lab, species: members[0].species || '',
+              kind: /\bx\b/i.test(name) ? 'cross' : 'other', description: `Brought over from eLab (${members.length} seed samples).` })).record;
+            existing.set(name, line);
+          }
+          const pairs = [];
+          for (const s of members) {
+            const lot = (await seedsApi('POST', '/lots', { line: line.code, source: `eLab ${s.name}`, location: s.path,
+              notes: [s.description, s.note !== name ? s.note : ''].filter(Boolean).join('\n') })).record;
+            pairs.push({ code: lot.code, sample_id: s.id, name: s.name });
+          }
+          lots += (await api('POST', '/elab/adopt', { lab, pairs })).linked;
+        }
+        toast(`Brought over ${lots} seed lots in ${n} lines to the Seed Bank, linked to eLab`, 'success', 6000);
+      }
+      put(progress);
+      await load(true);
+    };
+    const kindPick = el('select', { onchange: (e) => { kind = e.target.value; load().catch((err) => put(summary, err.message)); } },
+      el('option', { value: 'glycerol' }, 'Glycerol stocks → Lab Stocks'), el('option', { value: 'material' }, 'Plant material → Lab Stocks'),
+      el('option', { value: 'seed' }, 'Seed samples → the Seed Bank'));
+    const go = el('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+      go.disabled = true;
+      try { await run(); } catch (e) { toast(e.message, 'error', 8000); put(progress); } finally { go.disabled = false; }
+    } }, 'Bring them over');
+    modal({ title: 'Bring over from eLabJournal', wide: true, onClose: done, buttons: [{ label: 'Close', kind: 'secondary' }],
+      build: (body) => body.append(
+        el('p', { class: 'hint' }, 'eLab\'s samples not yet linked to a record here. Each one brought over is linked to its sample in eLab, ',
+          'which keeps its name; after that it follows changes made here, as other stocks do.'),
+        el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'What'), kindPick),
+        owners, el('label', { class: 'field' }, where), summary, table, progress, el('div', { class: 'elab-nav' }, el('span', { style: 'flex:1' }), go)) });
+    load().catch((err) => put(summary, err.message));
   },
 
   editPrimer(rec) {
@@ -624,7 +1216,7 @@ const App = {
           sds ? el('span', {}, el('a', { class: 'btn btn-primary', href: fileUrl(sds.id), target: '_blank', rel: 'noopener' }, `📕 Open the SDS`),
             el('span', { class: 'hint' }, ` ${sds.filename} · ${sizeLabel(sds.size)} · added by ${sds.created_by || '—'} ${localTime(sds.created_at)}`))
             : el('span', { class: 'hint' }, 'No safety data sheet yet. '),
-          el('label', { class: `btn ${sds ? 'btn-secondary' : 'btn-primary'} btn-sm` }, sds ? 'Replace the SDS…' : '📕 Add the SDS (PDF)…', sdsInput)),
+          !rec.mine ? null : el('label', { class: `btn ${sds ? 'btn-secondary' : 'btn-primary'} btn-sm` }, sds ? 'Replace the SDS…' : '📕 Add the SDS (PDF)…', sdsInput)),
         el('p', { class: 'hint' }, rec.cas ? `Look it up by its CAS number, ${rec.cas}:` : 'Look it up:', ' ', this.safetyLinks(rec.cas))));
   },
 
@@ -898,11 +1490,11 @@ const App = {
       list.filter((a) => !a.image).length ? el('ul', { class: 'file-list' }, list.filter((a) => !a.image).map((a) => el('li', {},
         el('span', { class: 'file-icon' }, FILE_ICONS[a.kind] || '📎'), el('a', { href: fileUrl(a.id), target: '_blank', rel: 'noopener' }, a.filename),
         el('span', { class: 'hint' }, ` ${sizeLabel(a.size)} · ${a.created_by || ''}`)))) : null,
-      el('label', { class: 'btn btn-secondary btn-sm' }, '📎 Add photos or files…',
-        el('input', { type: 'file', multiple: true, hidden: true, onchange: (e) => this.upload(rec, [...e.target.files]) })));
+      rec.mine ? el('label', { class: 'btn btn-secondary btn-sm' }, '📎 Add photos or files…',
+        el('input', { type: 'file', multiple: true, hidden: true, onchange: (e) => this.upload(rec, [...e.target.files]) })) : null);
     zone.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); zone.classList.add('drop'); } });
     zone.addEventListener('dragleave', () => zone.classList.remove('drop'));
-    zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('drop'); this.upload(rec, [...e.dataTransfer.files]); });
+    zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('drop'); if (rec.mine) this.upload(rec, [...e.dataTransfer.files]); });
     return this.section(`Photos and files (${list.length})`, zone);
   },
 

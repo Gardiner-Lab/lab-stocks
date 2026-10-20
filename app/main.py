@@ -33,19 +33,22 @@ class PrefixMiddleware:
 
 
 def create_app() -> Flask:
-    from app import db, people
+    from app import db, elab, people
     from app.api import api
 
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
     db.initialize(os.environ.get('STOCKS_DATABASE_PATH', '/stocks/stocks.db'))
     app.register_blueprint(api, url_prefix='/api')
+    # Copies the stocks to eLabJournal's inventory, when ELAB_URL and ELAB_TOKEN are set.
+    elab.start()
 
     def links() -> dict:
         return {
             'suite_home': os.environ.get('SUITE_HOME_URL', '/'),
             'editor': os.environ.get('EDITOR_URL', '/editor').rstrip('/'),
             'notebook': os.environ.get('NOTEBOOK_URL', '/notebook').rstrip('/'),
+            'seeds': os.environ.get('SEEDS_URL', '/seeds').rstrip('/'),
             'logout': os.environ.get('SUITE_LOGOUT_URL', '/account/logout'),
             # Where phones reach the suite, for the codes on labels; unset, the
             # address the label page was opened at.

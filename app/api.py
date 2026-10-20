@@ -1,15 +1,16 @@
 """Lab Stocks' JSON API, under /api."""
 
+import re
 from functools import wraps
 from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request
 
-from app import attachments, oligo, orders, people, records, sources
+from app import attachments, chairs, elab, oligo, orders, people, records, sources
 from app.db import connect
 
 api = Blueprint('api', __name__)
-PLURAL = {'glycerol': 'glycerol', 'primers': 'primer', 'chemicals': 'chemical', 'antibodies': 'antibody'}
+PLURAL = {'glycerol': 'glycerol', 'primers': 'primer', 'chemicals': 'chemical', 'antibodies': 'antibody', 'material': 'material'}
 
 
 def signed_in(view):
@@ -45,7 +46,10 @@ def _kind(collection: str) -> str:
 def me(person):
     return jsonify({'person': person.to_dict(), 'lab': records.lab_info(person),
                     'status': records.STATUS, 'chemical_status': records.CHEMICAL_STATUS,
-                    'antibody_types': records.ANTIBODY_TYPES,
+                    'antibody_types': records.ANTIBODY_TYPES, 'tissues': records.TISSUES,
+                    'glycerol': {'biosafety': records.BIOSAFETY, 'host_systems': records.HOST_SYSTEMS,
+                                 'yes_no': records.YES_NO, 'harmful': records.HARMFUL, 'permits': records.PERMITS,
+                                 'plant_markers': records.PLANT_MARKERS, 'yeast_markers': records.YEAST_MARKERS},
                     'directions': records.DIRECTIONS,
                     'orders': {'handles': orders.handles(person), 'waiting': orders.waiting(person),
                                'categories': orders.CATEGORIES, 'status': orders.STATUS}})
@@ -80,6 +84,202 @@ def primer_sequences(person):
 @signed_in
 def describe_oligo(person):
     return jsonify(oligo.describe(oligo.clean(request.args.get('sequence', ''))))
+
+
+# --- the copy in eLabJournal -----------------------------------------------------
+
+@api.get('/chair')
+@signed_in
+def get_chair(person):
+    """The lab's chair group (chosen by an administrator on the suite's dashboard), with its labs."""
+    return jsonify(chairs.info(person, records.lab_of(person, request.args.get('lab'))))
+
+
+@api.get('/elab')
+@signed_in
+def elab_status(person):
+    """Where the lab's stocks are copied in eLab, and how far; whether this person may change it."""
+    lab = records.lab_of(person, request.args.get('lab'))
+    found = elab.status(lab)
+    found['can_set'] = person.administers(lab)
+    return jsonify(found)
+
+
+def _elab_lab(person) -> str:
+    lab = records.lab_of(person, _body().get('lab') or request.args.get('lab'), strict=True)
+    if not person.administers(lab):
+        raise records.Forbidden("Only the lab's lab admin connects its stocks to eLab")
+    return lab
+
+
+@api.post('/elab/check')
+@signed_in
+def elab_check(person):
+    """Tries a token made in eLab: the sample types it sees there, and their permit and biosafety options."""
+    lab = _elab_lab(person)
+    url, token = _body().get('url'), str(_body().get('token') or '').strip()
+    saved = elab.connection(lab)
+    if not token and saved and saved.source == 'lab' and saved.url == elab.clean_url(url):
+        token = saved.token             # settings changed, the token kept
+    return jsonify(elab.check(url, token))
+
+
+@api.put('/elab')
+@signed_in
+def elab_connect(person):
+    lab = _elab_lab(person)
+    elab.save(lab, person.username, _body())
+    return jsonify({**elab.status(lab), 'can_set': True})
+
+
+@api.delete('/elab')
+@signed_in
+def elab_disconnect(person):
+    lab = _elab_lab(person)
+    elab.remove(lab)
+    return jsonify({**elab.status(lab), 'can_set': True})
+
+
+@api.get('/elab/locations')
+@signed_in
+def elab_locations(person):
+    """The storage locations of the lab's eLab group, for a stock's form."""
+    lab = records.lab_of(person, request.args.get('lab'))
+    try:
+        return jsonify(elab.locations(lab, refresh=request.args.get('refresh') == '1'))
+    except elab.ElabError as exc:
+        raise ValueError(f'eLab could not be asked for its storage: {exc}') from exc
+
+
+@api.post('/elab/locations')
+@signed_in
+def elab_add_location(person):
+    """Adds a storage location in eLab, from a stock's form: anyone in the lab."""
+    lab = records.lab_of(person, _body().get('lab'), strict=True)
+    try:
+        return jsonify({'location': elab.add_location(lab, _body().get('parent'), _body().get('name'), _body().get('kind'))}), 201
+    except elab.ElabError as exc:
+        raise ValueError(f'eLab did not add it: {exc}') from exc
+
+
+def _elab_admin_lab(person) -> str:
+    lab = records.lab_of(person, _body().get('lab') or request.args.get('lab'), strict=True)
+    if not person.administers(lab):
+        raise records.Forbidden("Only the lab's lab admin brings stocks over from eLab")
+    return lab
+
+
+@api.get('/elab/import')
+@signed_in
+def elab_import_list(person):
+    """eLab's plant material or seed samples not yet here, with their owners, to choose what to bring over."""
+    lab = _elab_admin_lab(person)
+    found = elab.candidates(lab, request.args.get('kind', ''), refresh=request.args.get('refresh') == '1')
+    owners: dict = {}
+    for s in found:
+        owners[s['owner']] = owners.get(s['owner'], 0) + 1
+    return jsonify({'samples': [{k: v for k, v in s.items() if k != 'meta'} for s in found],
+                    'owners': sorted(owners.items(), key=lambda o: -o[1])})
+
+
+@api.post('/elab/import/material')
+@signed_in
+def elab_import_material(person):
+    """Brings these Plant Material samples over from eLab as plant material, each linked to its sample."""
+    lab = _elab_admin_lab(person)
+    wanted = {int(i) for i in (_body().get('ids') or []) if str(i).isdigit()}
+    chosen = [s for s in elab.candidates(lab, 'material') if s['id'] in wanted]
+    if not chosen:
+        raise ValueError('Choose the samples to bring over')
+    tissues = ('leaf', 'flower', 'petal', 'root', 'stem', 'seedling', 'seed', 'fruit', 'callus', 'whole plant')
+    items = []
+    for s in chosen:
+        said = f"{s['description']} {s['note']}".lower()
+        by = re.search(r'collected by ([^,.;]+)', s['note'], re.I)
+        items.append({'name': s['name'], 'description': s['description'],
+                      'tissue': next((t for t in tissues if t in said), ''),
+                      'collected_by': by.group(1).strip() if by else '',
+                      'notes': s['note'], 'elab_layer_id': str(s['layer'] or ''), 'elab_layer_path': s['path'],
+                      'elab_position': str(s['position'] or '')})
+    made = []
+    with elab.paused():         # made and linked before any round can send them as new
+        for start in range(0, len(items), records.MANY):
+            made += records.create_material(person, items[start:start + records.MANY], {}, lab)
+        linked = elab.adopt(lab, 'material', [(rid, s['id'], s['name']) for rid, s in zip(made, chosen)])
+    return jsonify({'made': len(made), 'linked': linked}), 201
+
+
+def _choice(value, allowed) -> str:
+    """One of these, as written here, for a value from eLab (the first, of several); else none."""
+    first = str(value or '').split(',')[0].strip().casefold()
+    return next((a for a in allowed if a and a.casefold() == first), '')
+
+
+@api.post('/elab/import/glycerol')
+@signed_in
+def elab_import_glycerol(person):
+    """
+    Brings these Glycerol Stock samples over from eLab as glycerol stocks, each linked to its sample: its
+    fields as eLab has them, its place in eLab's storage, and linked to the plasmid of its name in the
+    Plasmid Editor, when there is exactly one this person may open.
+    """
+    lab = _elab_admin_lab(person)
+    wanted = {int(i) for i in (_body().get('ids') or []) if str(i).isdigit()}
+    chosen = [s for s in elab.candidates(lab, 'glycerol') if s['id'] in wanted]
+    if not chosen:
+        raise ValueError('Choose the samples to bring over')
+    data = []
+    for s in chosen:
+        meta = s['meta']
+        harm = next((v for k, v in meta.items() if k.startswith('Remarks on harmful effects')), '')
+        system = str(meta.get('Host system') or '').split(',')[0].strip()
+        named = [p for p in sources.plasmids(person, s['name'], limit=50) if p['name'].strip().casefold() == s['name'].casefold()]
+        data.append({
+            'lab': lab, 'plasmid_name': s['name'], 'plasmid_id': named[0]['id'] if len(named) == 1 else '',
+            'host': meta.get('Name of host strain', ''), 'selection': meta.get('Bacterial Markers', ''),
+            'permit': meta.get('Permit', ''), 'biosafety': _choice(meta.get('Biosafety level'), records.BIOSAFETY),
+            'host_system': 'other' if 'other' in system.casefold() else _choice(system, records.HOST_SYSTEMS),
+            'plant_markers': meta.get('Plant Markers', ''), 'yeast_markers': meta.get('Yeast Markers', ''),
+            'inserts': _choice(meta.get('Insert(s)?'), records.YES_NO), 'gene_ids': meta.get('geneID(s)', ''),
+            'donor': meta.get('Donororganism(s)', ''), 'harmful': _choice(meta.get('Harmful gene product?'), records.HARMFUL),
+            'harmful_notes': harm, 'made_on': s['created'] or None,
+            'notes': '\n'.join(filter(None, [meta.get('Remarks', ''), s['description'], s['note']])),
+            'elab_layer_id': str(s['layer'] or ''), 'elab_layer_path': s['path'], 'elab_position': str(s['position'] or '')})
+    with elab.paused():         # made and linked before any round can send them as new
+        made = [records.create(person, 'glycerol', d) for d in data]
+        linked = elab.adopt(lab, 'glycerol', [(rid, s['id'], s['name']) for rid, s in zip(made, chosen)])
+    return jsonify({'made': len(made), 'linked': linked,
+                    'plasmids': sum(1 for d in data if d['plasmid_id'])}), 201
+
+
+@api.post('/elab/adopt')
+@signed_in
+def elab_adopt(person):
+    """Links seed lots just made in the Seed Bank from eLab's seed samples to those samples: [{code, sample_id, name}]."""
+    lab = _elab_admin_lab(person)
+    pairs = [p for p in (_body().get('pairs') or []) if isinstance(p, dict)]
+    ids = elab.seed_lot_ids([str(p.get('code') or '') for p in pairs])
+    linked = elab.adopt(lab, 'seed', [(ids[p['code']], int(p['sample_id']), str(p.get('name') or ''))
+                                      for p in pairs if p.get('code') in ids and str(p.get('sample_id')).isdigit()])
+    return jsonify({'linked': linked})
+
+
+@api.post('/<collection>/<ident>/elab-again')
+@signed_in
+def send_to_elab_again(person, collection, ident):
+    """One whose sample was archived in eLab, sent again: to it if restored there, else as a new sample."""
+    kind = _kind(collection)
+    with connect() as conn:
+        row = records.changeable(conn, person, kind, ident)
+    return jsonify(elab.send_again(kind, row['lab'], row['id']))
+
+
+@api.post('/elab/sync')
+@signed_in
+def elab_sync(person):
+    _elab_lab(person)
+    elab.nudge()
+    return jsonify({'ok': True})
 
 
 # --- the order list ---------------------------------------------------------------
@@ -151,6 +351,15 @@ def create_stock(person, collection):
     return jsonify({'record': records.detail(person, kind, record_id), 'ordered': ordered}), 201
 
 
+@api.post('/material/many')
+@signed_in
+def create_material(person):
+    """Several tubes of plant material at once: a box of them, named in a row or pasted as a list."""
+    body = _body()
+    ids = records.create_material(person, body.get('items') or [], body.get('shared') or {}, body.get('lab'))
+    return jsonify({'material': [records.detail(person, 'material', i) for i in ids]}), 201
+
+
 @api.post('/primers/many')
 @signed_in
 def create_primers(person):
@@ -166,6 +375,8 @@ def create_primers(person):
 def get_stock(person, collection, ident):
     record = records.detail(person, _kind(collection), ident)
     record['mentions'] = sources.notebook_mentions(person, record['code'])
+    # Where it is in eLab, with a link to its sample there: for the lab's own.
+    record['elab'] = elab.record_state(record['kind'], record['lab'], record['id']) if record['mine'] else None
     return jsonify({'record': record})
 
 

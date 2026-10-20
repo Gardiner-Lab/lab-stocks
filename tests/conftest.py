@@ -5,6 +5,7 @@ import tempfile
 import pytest
 
 os.environ['STOCKS_NO_APP'] = '1'
+os.environ['ELAB_THREAD'] = '0'          # no sending to eLab behind the tests' backs
 
 
 def _make(path, script, rows=()):

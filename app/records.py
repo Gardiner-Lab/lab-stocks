@@ -42,6 +42,11 @@ YES_NO = ('', 'yes', 'no')
 HARMFUL = ('', 'unknown', 'no', 'yes')
 PERMITS = ('IG 99-249', 'new plasmid (not yet in permit)')
 PLANT_MARKERS = ('BASTA', 'Hygromycin', 'Kanamycin', 'Norflurazon', 'Methotrexate', 'GFP', 'DsRed', 'Ruby', 'Fluorescent Seed')
+# A primer's 5' and 3' modifications, as oligo suppliers offer them: suggested in its form (others may be typed).
+MODS_5 = ('Phosphate', 'Biotin', 'Biotin-TEG', '6-FAM', 'HEX', 'TET', 'JOE', 'Cy3', 'Cy5', 'TAMRA', 'ROX', 'Texas Red',
+          'ATTO 550', 'Amino C6', 'Amino C12', 'Thiol C6', 'Digoxigenin', 'Acrydite', 'DBCO', 'Azide')
+MODS_3 = ('Phosphate', 'Biotin', 'Amino C3', 'Amino C6', 'Thiol C3', 'BHQ-1', 'BHQ-2', 'BHQ-3', 'TAMRA', 'Dabcyl',
+          'Iowa Black FQ', 'Inverted dT', 'ddC', 'C3 spacer', 'Cholesterol-TEG', '6-FAM')
 YEAST_MARKERS = ('Ura-', 'Trp-', 'Leu-', 'His-', 'Lys-', 'Met-', 'Ade-', 'Gal-', 'Cycloheximide')
 LAB_CODE = re.compile(r'[A-Z][A-Z0-9]{0,5}')
 
@@ -314,8 +319,9 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
             seq = re.sub(r'\s', '', q.upper())
             by_sequence = len(seq) >= 4 and not set(seq) - oligo.IUPAC
             sql = ('SELECT * FROM primers WHERE deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR target LIKE ? '
-                   'OR purpose LIKE ? OR location LIKE ? OR notes LIKE ?' + (' OR sequence LIKE ?' if by_sequence else '') + ')')
-            args = [like] * 6 + ([f'%{seq}%'] if by_sequence else [])
+                   'OR purpose LIKE ? OR location LIKE ? OR notes LIKE ? OR mod5 LIKE ? OR mod3 LIKE ? OR modifications LIKE ?'
+                   + (' OR sequence LIKE ?' if by_sequence else '') + ')')
+            args = [like] * 9 + ([f'%{seq}%'] if by_sequence else [])
         rows = conn.execute(sql + ' ORDER BY created_at DESC, rowid DESC', args).fetchall()
     return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
 
@@ -390,8 +396,8 @@ def _primer_fields(data: dict, partial: bool) -> Dict[str, Any]:
         if d not in DIRECTIONS:
             raise ValueError('direction is forward, reverse, or empty')
         out['direction'] = d
-    for key, limit in (('target', 200), ('purpose', 300), ('modifications', 200), ('supplier', 120),
-                       ('concentration', 60), ('location', 200), ('notes', 5000)):
+    for key, limit in (('target', 200), ('purpose', 300), ('modifications', 200), ('mod5', 60), ('mod3', 60),
+                       ('supplier', 120), ('concentration', 60), ('location', 200), ('notes', 5000)):
         if key in data or not partial:
             out[key] = _text(data.get(key), limit)
     if 'ordered_on' in data or not partial:
@@ -401,6 +407,20 @@ def _primer_fields(data: dict, partial: bool) -> Dict[str, Any]:
         if s not in STATUS:
             raise ValueError(f'status must be one of {", ".join(STATUS)}')
         out['status'] = s
+    return out
+
+
+def ordered_as(rec) -> str:
+    """A primer as an oligo is ordered: 5'-[FAM]ACGT...[BHQ-1]-3' (17 nt), with any other modifications."""
+    keys = rec.keys() if hasattr(rec, 'keys') else rec
+    mod5 = rec['mod5'] if 'mod5' in keys else ''
+    mod3 = rec['mod3'] if 'mod3' in keys else ''
+    out = (f"5′-{f'[{mod5}]' if mod5 else ''}{rec['sequence']}{f'[{mod3}]' if mod3 else ''}-3′ "
+           f"({len(rec['sequence'])} nt)")
+    if mod5 or mod3:
+        out += '; ' + ', '.join(filter(None, [mod5 and f"5′ {mod5}", mod3 and f"3′ {mod3}"]))
+    if rec['modifications']:
+        out += f"; other modifications: {rec['modifications']}"
     return out
 
 

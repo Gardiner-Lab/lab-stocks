@@ -47,6 +47,7 @@ def me(person):
     return jsonify({'person': person.to_dict(), 'lab': records.lab_info(person),
                     'status': records.STATUS, 'chemical_status': records.CHEMICAL_STATUS,
                     'antibody_types': records.ANTIBODY_TYPES, 'tissues': records.TISSUES,
+                    'mods': {'5': records.MODS_5, '3': records.MODS_3},
                     'glycerol': {'biosafety': records.BIOSAFETY, 'host_systems': records.HOST_SYSTEMS,
                                  'yes_no': records.YES_NO, 'harmful': records.HARMFUL, 'permits': records.PERMITS,
                                  'plant_markers': records.PLANT_MARKERS, 'yeast_markers': records.YEAST_MARKERS},

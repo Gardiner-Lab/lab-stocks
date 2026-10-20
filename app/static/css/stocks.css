@@ -56,6 +56,8 @@ a { color: var(--primary); }
 .elab-steps .field input { font: inherit; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: .4rem; }
 .elab-kinds select, .elab-kinds input[type=text] { font: inherit; padding: .3rem; max-width: 100%; }
 .elab-lab-fields { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin-top: .35rem; font-size: .85rem; color: var(--muted); }
+.mod-tag { display: inline-block; font-size: .72rem; padding: 0 .35rem; margin: 0 .2rem; border-radius: .3rem;
+    background: var(--accent); color: #fff; font-family: inherit; vertical-align: middle; }
 .elab-fact { margin: .6rem 0; font-size: .9rem; color: var(--muted); }
 .storage-picker { display: flex; flex-direction: column; gap: .35rem; }
 .storage-picker select, .storage-picker input { font: inherit; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: .4rem; }

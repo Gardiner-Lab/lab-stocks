@@ -238,7 +238,8 @@ const App = {
     }
     document.body.append(el('datalist', { id: 'hosts' }, HOSTS.map((h) => el('option', { value: h }))));
     const g = this.meta.glycerol;
-    for (const [id, list] of [['permits', g.permits], ['plant-markers', g.plant_markers], ['yeast-markers', g.yeast_markers]]) {
+    for (const [id, list] of [['permits', g.permits], ['plant-markers', g.plant_markers], ['yeast-markers', g.yeast_markers],
+      ['mods-5', this.meta.mods['5']], ['mods-3', this.meta.mods['3']]]) {
       document.body.append(el('datalist', { id }, list.map((v) => el('option', { value: v }))));
     }
     window.addEventListener('hashchange', () => this.route());
@@ -546,7 +547,8 @@ const App = {
     const cells = {
       glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
         r.source === 'sequencing' ? `${r.status} ✓` : r.status],
-      primer: (r) => [r.name, el('span', { class: 'mono' }, r.sequence), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, [r.status, this.onOrderMark(r)]],
+      primer: (r) => [r.name, el('span', { class: 'mono' }, r.mod5 ? el('span', { class: 'mod-tag' }, r.mod5) : null, r.sequence,
+        r.mod3 ? el('span', { class: 'mod-tag' }, r.mod3) : null), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, [r.status, this.onOrderMark(r)]],
       chemical: (r) => [r.name, el('span', { class: 'mono' }, r.cas), r.room, r.size,
         r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'),
         [r.status === 'discarded' || !r.mine ? r.status : this.outToggle(r), this.onOrderMark(r)]],
@@ -1094,7 +1096,9 @@ const App = {
         { name: 'direction', label: 'Direction', type: 'select', options: [['', '—'], ['forward', 'forward'], ['reverse', 'reverse']], value: rec?.direction || '' },
         { name: 'target', label: 'Target', value: rec?.target, placeholder: 'the gene or plasmid it is for' },
         { name: 'purpose', label: 'Purpose', value: rec?.purpose, placeholder: 'e.g. sequencing, colony PCR, cloning' },
-        { name: 'modifications', label: 'Modifications', value: rec?.modifications, placeholder: "e.g. 5' phosphate, FAM" },
+        { name: 'mod5', label: '5′ modification', value: rec?.mod5, list: 'mods-5', placeholder: 'none; e.g. Phosphate, 6-FAM, Biotin' },
+        { name: 'mod3', label: '3′ modification', value: rec?.mod3, list: 'mods-3', placeholder: 'none; e.g. BHQ-1, Phosphate, Inverted dT' },
+        { name: 'modifications', label: 'Other modifications', value: rec?.modifications, placeholder: 'e.g. internal dT-FAM at 12, phosphorothioate bonds' },
         { name: 'supplier', label: 'Supplier', value: rec?.supplier },
         { name: 'ordered_on', label: 'Ordered on', type: 'date', value: rec?.ordered_on },
         { name: 'concentration', label: 'Concentration', value: rec?.concentration, placeholder: 'e.g. 100 µM stock' },
@@ -1133,14 +1137,17 @@ const App = {
       this.head(rec, rec.name, [rec.direction, rec.target, rec.status, rec.location && `kept in ${rec.location}`].filter(Boolean).join(' · '), [
         el('button', { class: 'btn btn-secondary', onclick: () => this.editPrimer(rec) }, '✎ Edit')]),
       el('div', { class: 'primer-seq' },
-        el('div', {}, el('span', { class: 'hint' }, "5′ "), el('span', { class: 'mono big' }, rec.sequence), el('span', { class: 'hint' }, " 3′"),
+        el('div', {}, el('span', { class: 'hint' }, "5′ "), rec.mod5 ? el('span', { class: 'mod-tag', title: '5′ modification' }, rec.mod5) : null,
+          el('span', { class: 'mono big' }, rec.sequence), rec.mod3 ? el('span', { class: 'mod-tag', title: '3′ modification' }, rec.mod3) : null,
+          el('span', { class: 'hint' }, " 3′"),
           el('button', { class: 'btn btn-secondary btn-sm', onclick: async () => {
             if (await copyText(rec.sequence)) toast('Copied', 'success', 1500);
             else toast('Copying is blocked here: select the sequence and copy it', 'error', 4000);
           } }, 'Copy')),
         el('div', { class: 'hint' }, 'Reverse complement: ', el('span', { class: 'mono' }, revcomp(rec.sequence)))),
       this.facts([['Length', `${rec.length} nt`], ['GC', `${rec.gc}%`], ['Tm', rec.tm !== null ? `${rec.tm} °C (nearest neighbour, 50 mM Na⁺, 250 nM primer)` : null],
-        ['Direction', rec.direction], ['Target', rec.target], ['Purpose', rec.purpose], ['Modifications', rec.modifications],
+        ['Direction', rec.direction], ['Target', rec.target], ['Purpose', rec.purpose],
+        ['5′ modification', rec.mod5], ['3′ modification', rec.mod3], ['Other modifications', rec.modifications],
         ['Supplier', rec.supplier], ['Ordered on', rec.ordered_on], ['Concentration', rec.concentration], ['Kept in', rec.location],
         ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null);

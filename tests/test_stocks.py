@@ -180,6 +180,22 @@ def test_someone_in_two_labs_sees_both_and_chooses_where_new_stocks_go(as_user, 
 PDF = b'%PDF-1.4\n' + b'\x00' * 64
 
 
+def test_a_primers_5_and_3_prime_modifications_go_on_its_order(as_user, world):
+    ana = as_user('ana')
+    assert '6-FAM' in _ok(ana.get('/api/me'))['mods']['5'] and 'BHQ-1' in _ok(ana.get('/api/me'))['mods']['3']
+    p = _ok(ana.post('/api/primers', json={'name': 'probe', 'sequence': 'GTAAAACGACGGCCAGT', 'mod5': '6-FAM', 'mod3': 'BHQ-1',
+                                           'modifications': 'internal dT-TAMRA'}), 201)['record']
+    assert (p['mod5'], p['mod3'], p['length']) == ('6-FAM', 'BHQ-1', 17)          # not in the sequence or its length
+    assert [r['code'] for r in _ok(ana.get('/api/primers?q=BHQ'))['primers']] == [p['code']]
+    order = _ok(ana.post('/api/orders', json={'record': p['code']}), 201)['order']
+    assert order['details'] == ('5′-[6-FAM]GTAAAACGACGGCCAGT[BHQ-1]-3′ (17 nt); 5′ 6-FAM, 3′ BHQ-1; '
+                                'other modifications: internal dT-TAMRA')
+    plain = _ok(ana.post('/api/primers', json={'name': 'plain', 'sequence': 'ACGTACGTACGT'}), 201)['record']
+    assert _ok(ana.post('/api/orders', json={'record': plain['code']}), 201)['order']['details'] == '5′-ACGTACGTACGT-3′ (12 nt)'
+    _ok(ana.put(f"/api/primers/{plain['code']}", json={'mod5': 'Phosphate'}))
+    assert _ok(ana.get(f"/api/primers/{plain['code']}"))['record']['mod5'] == 'Phosphate'
+
+
 def test_chemicals_with_their_cas_number_and_safety_data_sheet(as_user):
     ana, ben, zoe = as_user('ana'), as_user('ben'), as_user('zoe')
     made = _ok(ana.post('/api/chemicals', json={'name': 'Ethanol absolute', 'cas': ' 64-17-5 ', 'room': 'O.703',

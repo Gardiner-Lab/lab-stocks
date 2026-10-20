@@ -39,7 +39,8 @@ function label(rec) {
   const lines = {
     glycerol: () => [`${rec.plasmid_name}${rec.clone ? ` clone ${rec.clone}` : ''}`, [rec.host, rec.selection].filter(Boolean).join(' · '),
       [rec.made_on, rec.location].filter(Boolean).join(' · ')],
-    primer: () => [rec.name, rec.sequence, [`${rec.length} nt`, rec.tm !== null ? `Tm ${rec.tm} °C` : '', rec.location].filter(Boolean).join(' · ')],
+    primer: () => [rec.name, `${rec.mod5 ? `[${rec.mod5}]` : ''}${rec.sequence}${rec.mod3 ? `[${rec.mod3}]` : ''}`,
+      [`${rec.length} nt`, rec.tm !== null ? `Tm ${rec.tm} °C` : '', rec.location].filter(Boolean).join(' · ')],
     chemical: () => [rec.name, rec.cas ? `CAS ${rec.cas}` : '', [rec.size, rec.room].filter(Boolean).join(' · ')],
     antibody: () => [[rec.short_code, rec.type].filter(Boolean).join(' · '), rec.description,
       [rec.host && `raised in ${rec.host}`, rec.producer, rec.product_number].filter(Boolean).join(' · ')],

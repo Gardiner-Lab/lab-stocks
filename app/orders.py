@@ -110,10 +110,8 @@ def _from_record(conn, person: Person, code: str) -> Dict[str, Any]:
         return {**base, 'item': rec['name'], 'quantity': rec['size'],
                 'details': f"CAS {rec['cas']}" if rec['cas'] else ''}
     if kind == 'primer':
-        details = f"5′-{rec['sequence']}-3′ ({len(rec['sequence'])} nt)"
-        if rec['modifications']:
-            details += f"; modifications: {rec['modifications']}"
-        return {**base, 'item': rec['name'], 'supplier': rec['supplier'], 'details': details}
+        from app.records import ordered_as
+        return {**base, 'item': rec['name'], 'supplier': rec['supplier'], 'details': ordered_as(rec)}
     return {**base, 'item': rec['description'] or rec['short_code'], 'supplier': rec['producer'],
             'product_number': rec['product_number'],
             'details': ', '.join(filter(None, [rec['short_code'] and f"short code {rec['short_code']}",

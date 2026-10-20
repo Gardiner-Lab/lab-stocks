@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS primers (
     direction TEXT NOT NULL DEFAULT '',
     target TEXT NOT NULL DEFAULT '',
     purpose TEXT NOT NULL DEFAULT '',
-    modifications TEXT NOT NULL DEFAULT '',
+    modifications TEXT NOT NULL DEFAULT '',     -- other ones (internal); 5' and 3' ones in PRIMER_ADDED
     supplier TEXT NOT NULL DEFAULT '',
     ordered_on TEXT,
     concentration TEXT NOT NULL DEFAULT '',
@@ -245,6 +245,10 @@ GLYCEROL_ADDED = ['permit', 'biosafety', 'host_system', 'plant_markers', 'yeast_
                   'elab_layer_id', 'elab_layer_path', 'elab_position']
 
 
+# A primer's 5' and 3' modifications, as ordered: added to databases from before them.
+PRIMER_ADDED = ['mod5', 'mod3']
+
+
 def set_path(path: str) -> None:
     global _path
     _path = path
@@ -290,6 +294,10 @@ def initialize(db_path: Optional[str] = None) -> None:
         conn.executescript(SCHEMA)
         if 'elab_name' not in {r['name'] for r in conn.execute('PRAGMA table_info(elab_links)')}:
             conn.execute('ALTER TABLE elab_links ADD COLUMN elab_name TEXT')
+        have = {r['name'] for r in conn.execute('PRAGMA table_info(primers)')}
+        for column in PRIMER_ADDED:
+            if column not in have:
+                conn.execute(f"ALTER TABLE primers ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         have = {r['name'] for r in conn.execute('PRAGMA table_info(glycerol)')}
         for column in GLYCEROL_ADDED:
             if column not in have:

@@ -5,6 +5,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- A primer's 5′ and 3′ modifications, as oligo suppliers offer them (Phosphate, Biotin, 6-FAM, HEX,
+  Cy3, Cy5, amino and thiol linkers, BHQ quenchers, Inverted dT, ...; others may be typed), beside
+  other (internal) modifications. Its order says it as suppliers want it:
+  5′-[6-FAM]GTAAAACGACGGCCAGT[BHQ-1]-3′ (17 nt). Shown on its page, in the list and on labels,
+  and searched.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added

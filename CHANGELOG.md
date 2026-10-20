@@ -5,6 +5,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-20
+
 ### Added
 - A primer's 5′ and 3′ modifications, as oligo suppliers offer them (Phosphate, Biotin, 6-FAM, HEX,
   Cy3, Cy5, amino and thiol linkers, BHQ quenchers, Inverted dT, ...; others may be typed), beside

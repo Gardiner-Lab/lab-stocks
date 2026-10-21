@@ -5,6 +5,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-21
+
+### Changed
+- Bring over from eLab: everyone owning samples of the kind in eLab stays listed, also when all of
+  theirs are here already (greyed, saying how many are here, with nothing to tick).
+
+### Added
+- For the Seed Bank: how far a lab's seed lots are copied to eLab, a lot's sample and state there,
+  and sending a lot now (or again, when archived in eLab).
+
 ## [0.4.2] - 2026-10-20
 
 ### Changed

@@ -459,7 +459,7 @@ def test_bringing_over_elabs_plant_material_and_seed_samples(as_user, world, fak
     # Only the lab admin.
     assert ana.get('/api/elab/import?kind=material').status_code == 403
     found = _ok(lead.get('/api/elab/import?kind=material'))
-    assert dict(found['owners']) == {'Pat Student': 3, 'Someone Else': 1}
+    assert found['owners'] == [['Pat Student', 3, 0], ['Someone Else', 1, 0]]
     assert {s['path'] for s in found['samples'] if s['owner'] == 'Pat Student'} == {'Freezer 1 / Tower 2 / Box 5'}
 
     # Plant material: made here, in their places, linked; nothing changed in eLab.
@@ -471,7 +471,9 @@ def test_bringing_over_elabs_plant_material_and_seed_samples(as_user, world, fak
     fake.calls.clear()
     assert _run(fake) == {'sent': 0, 'failed': 0}
     assert all(m == 'GET' for m, _ in fake.calls)
-    assert [s['id'] for s in _ok(lead.get('/api/elab/import?kind=material'))['samples']] == [110]
+    found = _ok(lead.get('/api/elab/import?kind=material'))
+    assert [s['id'] for s in found['samples']] == [110]
+    assert found['owners'] == [['Someone Else', 1, 0], ['Pat Student', 0, 3]]       # still named, nothing to bring
     # Changed here: eLab follows, the sample keeping its name there.
     _ok(lead.put(f"/api/material/{t['code']}", json={'elab_position': '9'}))
     assert _run(fake)['sent'] == 1
@@ -595,7 +597,7 @@ def test_bringing_over_elabs_glycerol_stocks(as_user, world, fake, monkeypatch):
                          'description': '', 'note': '', 'storageLayerID': None, 'position': None,
                          'meta': {'Host system': '~ Other ~', 'Biosafety level': 'unknown'}}
     found = _ok(lead.get('/api/elab/import?kind=glycerol'))
-    assert dict(found['owners']) == {'Robin Colleague': 2} and found['samples'][0]['strain'] == 'E.coli DH5a'
+    assert found['owners'] == [['Robin Colleague', 2, 0]] and found['samples'][0]['strain'] == 'E.coli DH5a'
     assert as_user('ana').post('/api/elab/import/glycerol', json={'ids': [501]}).status_code == 403
     res = _ok(lead.post('/api/elab/import/glycerol', json={'ids': [501, 502]}), 201)
     assert res == {'made': 2, 'linked': 2, 'plasmids': 1}
@@ -610,7 +612,8 @@ def test_bringing_over_elabs_glycerol_stocks(as_user, world, fake, monkeypatch):
     fake.calls.clear()
     assert _run(fake) == {'sent': 0, 'failed': 0}
     assert all(m == 'GET' for m, _ in fake.calls)
-    assert _ok(lead.get('/api/elab/import?kind=glycerol'))['samples'] == []
+    found = _ok(lead.get('/api/elab/import?kind=glycerol'))
+    assert found['samples'] == [] and found['owners'] == [['Robin Colleague', 0, 2]]
     _ok(lead.put(f"/api/glycerol/{g['code']}", json={'clone': '2'}))
     _run(fake)
     assert fake.samples[501]['name'] == 'pGreen-35S-GFP' and 'Clone: 2' in fake.samples[501]['meta']['Remarks']

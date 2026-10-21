@@ -71,6 +71,7 @@ a { color: var(--primary); }
 .tube-row[hidden], .tubes [hidden] { display: none; }
 .import-owners { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin: .4rem 0; }
 .import-owners .chip { cursor: pointer; }
+.import-owners .chip-done { cursor: default; }
 .import-preview { max-height: 18rem; overflow: auto; }
 .elab-nav { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
 .list-search { font: inherit; width: 100%; padding: .55rem .75rem; border: 1px solid var(--border); border-radius: .45rem; margin: .4rem 0 .8rem; }

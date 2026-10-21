@@ -173,14 +173,18 @@ def _elab_admin_lab(person) -> str:
 @api.get('/elab/import')
 @signed_in
 def elab_import_list(person):
-    """eLab's plant material or seed samples not yet here, with their owners, to choose what to bring over."""
+    """
+    eLab's samples of the kind not yet here, to choose what to bring over, and everyone owning any there:
+    owners [owner, not yet here, already here], also those with nothing left to bring.
+    """
     lab = _elab_admin_lab(person)
-    found = elab.candidates(lab, request.args.get('kind', ''), refresh=request.args.get('refresh') == '1')
+    found = elab.candidates(lab, request.args.get('kind', ''), refresh=request.args.get('refresh') == '1', every=True)
     owners: dict = {}
     for s in found:
-        owners[s['owner']] = owners.get(s['owner'], 0) + 1
-    return jsonify({'samples': [{k: v for k, v in s.items() if k != 'meta'} for s in found],
-                    'owners': sorted(owners.items(), key=lambda o: -o[1])})
+        counts = owners.setdefault(s['owner'], [0, 0])
+        counts[1 if s['here'] else 0] += 1
+    return jsonify({'samples': [{k: v for k, v in s.items() if k not in ('meta', 'here')} for s in found if not s['here']],
+                    'owners': sorted(([o, *n] for o, n in owners.items()), key=lambda o: (-o[1], -o[2]))})
 
 
 @api.post('/elab/import/material')

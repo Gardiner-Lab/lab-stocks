@@ -1028,9 +1028,11 @@ const App = {
       if (mine !== asked) return;
       samples = found.samples;
       ticked.clear();
-      put(owners, el('span', { class: 'hint' }, 'Owned in eLab by: '), found.owners.map(([o, n]) => el('label', { class: 'chip' },
-        el('input', { type: 'checkbox', checked: ticked.has(o), onchange: (e) => { if (e.target.checked) ticked.add(o); else ticked.delete(o); draw(); } }),
-        ` ${o || '(nobody)'} (${n})`)));
+      // Everyone owning any there, also those whose samples are all here already (nothing to tick).
+      put(owners, el('span', { class: 'hint' }, 'Owned in eLab by: '), found.owners.map(([o, n, here]) => el('label', {
+        class: `chip ${n ? '' : 'chip-done'}`, title: n ? `${n} not here yet${here ? `, ${here} brought over already` : ''}` : `All ${here} brought over already: nothing to bring` },
+        el('input', { type: 'checkbox', disabled: !n, checked: ticked.has(o), onchange: (e) => { if (e.target.checked) ticked.add(o); else ticked.delete(o); draw(); } }),
+        ` ${o || '(nobody)'} (${n ? n : `all ${here} here`}${n && here ? `, ${here} here` : ''})`)));
       draw();
     };
     const run = async () => {

@@ -791,10 +791,11 @@ def _keep(kind: str, record_id: str, link: Optional[dict], **values) -> None:
 _found: Dict[str, Tuple[float, List[dict]]] = {}
 
 
-def candidates(lab: str, kind: str, refresh: bool = False, opener=None) -> List[dict]:
+def candidates(lab: str, kind: str, refresh: bool = False, opener=None, every: bool = False) -> List[dict]:
     """
     The samples of the lab's eLab group of the kind's sample type not yet linked to a record here (none
-    archived), to bring over: name, owner, note, description, species, where they are kept.
+    archived), to bring over: name, owner, note, description, species, where they are kept. every: those
+    already here as well, each with here: whether it is.
     """
     c = connection(lab)
     if c is None:
@@ -833,6 +834,8 @@ def candidates(lab: str, kind: str, refresh: bool = False, opener=None) -> List[
                 pass
             finally:
                 seeds.close()
+    if every:
+        return [{**s, 'here': s['id'] in linked or s['name'] in brought} for s in samples]
     return [s for s in samples if s['id'] not in linked and s['name'] not in brought]
 
 

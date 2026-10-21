@@ -945,6 +945,21 @@ def seed_lot_ids(codes: List[str]) -> Dict[str, str]:
         conn.close()
 
 
+def seed_lot(code: str) -> Optional[dict]:
+    """The Seed Bank's lot of this code, not deleted: {id, code, lab} (read only)."""
+    conn = _seeds_db()
+    if conn is None:
+        return None
+    try:
+        r = conn.execute('SELECT id, code, lab FROM lots WHERE code = ? AND deleted_at IS NULL AND lab IS NOT NULL',
+                         (code,)).fetchone()
+        return dict(r) if r else None
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+
 def nudge() -> None:
     """Something changed: send it now, not at the next round."""
     _wake.set()
@@ -972,8 +987,11 @@ def start() -> None:
     _thread.start()
 
 
-def status(lab: str) -> dict:
-    """Where the lab's stocks are copied, and how far: sent, waiting, and what failed. Never the token."""
+def status(lab: str, only: Optional[str] = None) -> dict:
+    """
+    Where the lab's stocks are copied, and how far: sent, waiting, and what failed (only: of that kind).
+    Never the token.
+    """
     c = connection(lab)
     out = {'lab': lab, 'connected': c is not None, 'default_url': os.environ.get('ELAB_URL', '').strip() or DEFAULT_URL,
            'all_kinds': [[k, SAMPLE_TYPES[k], TITLES[k]] for k in SAMPLE_TYPES], 'lab_fields': LAB_FIELDS,
@@ -985,6 +1003,8 @@ def status(lab: str) -> dict:
     out.update(url=c.url, source=c.source, kinds=c.kinds, sample_types={k: c.type_name(k) for k in c.kinds},
                defaults=c.defaults, set_by=c.set_by, set_at=c.set_at)
     for kind in c.kinds:
+        if only and kind != only:
+            continue
         links = _links(kind)
         for item in items(kind, lab, c):
             link = links.get(item.id)

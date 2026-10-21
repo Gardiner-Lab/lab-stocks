@@ -741,3 +741,57 @@ def _lab_admin(world):
     """)
     conn.commit()
     conn.close()
+
+
+def test_a_seed_lots_page_in_the_seed_bank_shows_it_in_elab_and_sends_it(as_user, world, fake, monkeypatch):
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    seed_bank(world, [('GARD-S-0001', 'Gardiner Lab', 'T3', 'hemizygous', 0, None)])
+    ana = as_user('ana')
+    assert _ok(ana.get('/api/elab/seed-lots/GARD-S-0001'))['elab']['state'] == 'waiting'
+    nudged = []
+    monkeypatch.setattr(elab, 'nudge', lambda: nudged.append(1))
+    assert _ok(ana.post('/api/elab/seed-lots/GARD-S-0001/send')) == {'sent': True} and nudged     # any of the lab
+    _run(fake)
+    e = _ok(ana.get('/api/elab/seed-lots/GARD-S-0001'))['elab']
+    sid = {x['altID']: i for i, x in fake.samples.items()}['GARD-S-0001']
+    assert e['state'] == 'sent' and e['sample_id'] == sid
+    # Archived in eLab: sent again from the lot's page.
+    fake.samples[sid]['archived'] = True
+    seed_bank(world, [('GARD-S-0001', 'Gardiner Lab', 'T3', 'homozygous', 0, None)])
+    _run(fake)
+    assert _ok(ana.get('/api/elab/seed-lots/GARD-S-0001'))['elab']['state'] == 'archived in eLab'
+    assert _ok(ana.post('/api/elab/seed-lots/GARD-S-0001/send')) == {'restored': False}
+    # Another lab's, or none: not shown.
+    assert as_user('zoe').get('/api/elab/seed-lots/GARD-S-0001').status_code == 403
+    assert ana.get('/api/elab/seed-lots/GARD-S-0099').status_code == 404
+    assert _ok(as_user('boss').get('/api/elab/seed-lots/GARD-S-0001'))['elab'] is not None
+
+
+def test_a_seed_lots_page_shows_nothing_when_its_lab_does_not_copy_them(as_user, world, monkeypatch):
+    seed_bank(world, [('GARD-S-0001', 'Gardiner Lab', 'T3', '', 0, None)])
+    assert _ok(as_user('ana').get('/api/elab/seed-lots/GARD-S-0001')) == {'elab': None}
+    assert as_user('ana').post('/api/elab/seed-lots/GARD-S-0001/send').status_code == 400
+
+
+def test_the_seed_banks_lists_show_how_far_the_labs_seed_lots_are_in_elab(as_user, world, fake, monkeypatch):
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    ana = as_user('ana')
+    _ok(ana.post('/api/glycerol', json={'plasmid_name': 'pA'}), 201)
+    seed_bank(world, [('GARD-S-0001', 'Gardiner Lab', 'T3', '', 0, None), ('GARD-S-0002', 'Gardiner Lab', 'T2', '', 0, None)])
+    s = _ok(ana.get('/api/elab/seed-lots'))
+    assert s['copies'] and s['waiting'] == 2 and s['synced'] == 0       # the seed lots only, not the glycerol stock
+    nudged = []
+    monkeypatch.setattr(elab, 'nudge', lambda: nudged.append(1))
+    _ok(ana.post('/api/elab/seed-lots/sync', json={'lab': 'Gardiner Lab'}))      # any of the lab
+    assert nudged
+    assert as_user('ana').post('/api/elab/seed-lots/sync', json={'lab': 'Other Lab'}).status_code == 400
+    _run(fake)
+    assert _ok(ana.get('/api/elab/seed-lots'))['synced'] == 2
+
+
+def test_the_seed_banks_lists_without_elab(as_user, world, monkeypatch):
+    s = _ok(as_user('ana').get('/api/elab/seed-lots'))
+    assert not s['connected'] and not s['copies'] and 'token' not in s
+    assert as_user('ana').post('/api/elab/seed-lots/sync', json={}).status_code == 400

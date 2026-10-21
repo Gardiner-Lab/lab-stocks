@@ -279,6 +279,60 @@ def send_to_elab_again(person, collection, ident):
     return jsonify(elab.send_again(kind, row['lab'], row['id']))
 
 
+def _seed_lot(person, code: str) -> dict:
+    """A seed lot of the Seed Bank (read only), of one of this person's labs (an administrator: any)."""
+    lot = elab.seed_lot(code)
+    if lot is None:
+        raise records.NotFound('No such seed lot')
+    if not person.is_admin and lot['lab'].casefold() not in {n.casefold() for n in records.labs_of(person)}:
+        raise records.Forbidden("Only the lot's lab sees it in eLab")
+    return lot
+
+
+@api.get('/elab/seed-lots')
+@signed_in
+def seed_lots_elab(person):
+    """How far the lab's Seed Bank lots are copied to eLab, for the Seed Bank's lists; copies: whether it copies them."""
+    lab = records.lab_of(person, request.args.get('lab'))
+    found = elab.status(lab, only='seed')
+    found['copies'] = 'seed' in found.get('kinds', [])
+    return jsonify(found)
+
+
+@api.post('/elab/seed-lots/sync')
+@signed_in
+def sync_seed_lots(person):
+    """The lab's seed lots sent now, not at the next round: anyone of the lab may ask (it only wakes the round)."""
+    lab = records.lab_of(person, _body().get('lab'), strict=True)
+    c = elab.connection(lab)
+    if c is None or 'seed' not in c.kinds:
+        raise ValueError('The lab does not copy its seed lots to eLab')
+    elab.nudge()
+    return jsonify({'ok': True})
+
+
+@api.get('/elab/seed-lots/<code>')
+@signed_in
+def seed_lot_elab(person, code):
+    """Where a Seed Bank lot is in eLab, for its page there: null when its lab does not copy seed lots."""
+    lot = _seed_lot(person, code)
+    return jsonify({'elab': elab.record_state('seed', lot['lab'], lot['id'])})
+
+
+@api.post('/elab/seed-lots/<code>/send')
+@signed_in
+def send_seed_lot(person, code):
+    """A Seed Bank lot sent now (archived in eLab: sent again, to its sample if restored there, else as a new one)."""
+    lot = _seed_lot(person, code)
+    state = elab.record_state('seed', lot['lab'], lot['id'])
+    if state is None:
+        raise ValueError("The lot's lab does not copy its seed lots to eLab")
+    if state['state'] == 'archived in eLab':
+        return jsonify(elab.send_again('seed', lot['lab'], lot['id']))
+    elab.nudge()
+    return jsonify({'sent': True})
+
+
 @api.post('/elab/sync')
 @signed_in
 def elab_sync(person):

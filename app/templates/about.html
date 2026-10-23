@@ -4,12 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>About · Lab Stocks</title>
+    <link rel="stylesheet" href="{{ request.script_root }}/static/trellis/trellis.css?v={{ version }}">
     <link rel="stylesheet" href="{{ request.script_root }}/static/css/stocks.css?v={{ version }}">
 </head>
-<body>
-<header class="topbar">
-    <a class="topbar-back" href="{{ request.script_root }}/">← Lab Stocks</a>
-    <span class="topbar-title">🧫 Lab Stocks</span>
+<body class="tt">
+<header class="tt-bar">
+    <a class="tt-home" href="{{ request.script_root }}/" title="All of Trellis Tools"><img src="{{ request.script_root }}/static/trellis/trellis.svg" alt=""><span>Trellis Tools</span></a>
+    <a class="tt-module" href="{{ request.script_root }}/"><img src="{{ request.script_root }}/static/trellis/stocks.svg" alt="">Lab Stocks</a>
 </header>
 <main class="about">
     <h1>Lab Stocks {{ version }}</h1>

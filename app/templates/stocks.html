@@ -4,28 +4,29 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Lab Stocks</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧫</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="{{ request.script_root }}/static/trellis/stocks.svg">
+    <link rel="stylesheet" href="{{ request.script_root }}/static/trellis/trellis.css?v={{ version }}">
     <link rel="stylesheet" href="{{ request.script_root }}/static/css/stocks.css?v={{ version }}">
 </head>
-<body>
-<header class="topbar">
-    <a class="topbar-back" href="{{ links.suite_home }}">← Lab tools</a>
-    <span class="topbar-title">🧫 Lab Stocks</span>
-    <nav class="view-tabs">
-        <a class="view-tab" data-view="glycerol" href="#glycerol">Glycerol stocks</a>
-        <a class="view-tab" data-view="primers" href="#primers">Primers</a>
-        <a class="view-tab" data-view="chemicals" href="#chemicals">Chemicals</a>
-        <a class="view-tab" data-view="antibodies" href="#antibodies">Antibodies</a>
-        <a class="view-tab" data-view="material" href="#material">Plant material</a>
-        <a class="view-tab" data-view="orders" href="#orders">🛒 Orders <span class="count-badge" id="orders-waiting" hidden></span></a>
+<body class="tt">
+<header class="tt-bar">
+    <a class="tt-home" href="{{ links.suite_home }}" title="All of Trellis Tools"><img src="{{ request.script_root }}/static/trellis/trellis.svg" alt=""><span>Trellis Tools</span></a>
+    <a class="tt-module" href="{{ request.script_root }}/"><img src="{{ request.script_root }}/static/trellis/stocks.svg" alt="">Lab Stocks</a>
+    <nav class="tt-tabs view-tabs">
+        <a class="tt-tab view-tab" data-view="glycerol" href="#glycerol">Glycerol stocks</a>
+        <a class="tt-tab view-tab" data-view="primers" href="#primers">Primers</a>
+        <a class="tt-tab view-tab" data-view="chemicals" href="#chemicals">Chemicals</a>
+        <a class="tt-tab view-tab" data-view="antibodies" href="#antibodies">Antibodies</a>
+        <a class="tt-tab view-tab" data-view="material" href="#material">Plant material</a>
+        <a class="tt-tab view-tab" data-view="orders" href="#orders">Orders <span class="count-badge" id="orders-waiting" hidden></span></a>
     </nav>
-    <nav class="topbar-nav">
+    <nav class="tt-links">
         <a href="{{ links.editor }}/editor" target="_blank" rel="noopener">Plasmid Editor ↗</a>
         <a href="{{ links.notebook }}/" target="_blank" rel="noopener">Notebook ↗</a>
         <a href="{{ request.script_root }}/about">About</a>
     </nav>
-    <span class="topbar-user">{{ person.username }}{% if person.lab %} · {{ person.lab }}{% endif %}{% if person.role == 'admin' %} · admin{% endif %}</span>
-    <a class="topbar-logout" href="{{ links.logout }}">Log out</a>
+    <span class="tt-user">{{ person.username }}{% if person.lab %} · {{ person.lab }}{% endif %}{% if person.role == 'admin' %} · admin{% endif %}</span>
+    <a class="tt-logout" href="{{ links.logout }}">Log out</a>
 </header>
 <main class="main" id="main"></main>
 <div id="toasts" class="toasts"></div>

@@ -535,6 +535,38 @@ const App = {
       onchange: (e) => { if (e.target.checked) this.selected.add(code); else this.selected.delete(code); this.onSelection?.(); } });
   },
 
+  /**
+   * The header tick of a table's "Choose for labels" boxes: chooses every row the table shows (what
+   * a search has left), or none; ticked when all are chosen, half-ticked when some are. It follows
+   * the rows' own boxes as they change.
+   */
+  pickAll(codes) {
+    const box = el('input', { type: 'checkbox', title: 'Choose every row shown for labels', 'aria-label': 'Choose every row shown for labels' });
+    box.sync = () => {
+      const chosen = codes.filter((c) => this.selected.has(c)).length;
+      box.checked = chosen > 0 && chosen === codes.length;
+      box.indeterminate = chosen > 0 && chosen < codes.length;
+    };
+    box.addEventListener('click', (e) => e.stopPropagation());
+    box.addEventListener('change', () => {
+      for (const c of codes) { if (box.checked) this.selected.add(c); else this.selected.delete(c); }
+      for (const row of box.closest('table').querySelectorAll('tbody td.pick input')) row.checked = box.checked;
+      this.onSelection?.();
+    });
+    box.sync();
+    return box;
+  },
+
+  /** A table whose first column chooses rows for labels, with the select-all tick in that column's header. */
+  pickTable(head, codes, body) {
+    const all = this.pickAll(codes);
+    const table = el('table', { class: 'data' },
+      el('thead', {}, el('tr', {}, head.map((h, i) => (i === 0 ? el('th', { class: 'pick' }, all) : el('th', {}, h))))),
+      body);
+    table.addEventListener('change', (e) => { if (e.target !== all && e.target.closest('td.pick')) all.sync(); });
+    return table;
+  },
+
   listTable(kind, rows) {
     if (!rows.length) return el('p', { class: 'empty' }, 'Nothing here yet.');
     const head = {
@@ -558,8 +590,7 @@ const App = {
         [r.collected_on, r.collected_by].filter(Boolean).join(' · '), r.experiment,
         r.elab_layer_path ? `${r.elab_layer_path.split(' / ').slice(-2).join(' / ')}${r.elab_position ? ` · ${r.elab_position}` : ''}` : r.location, r.status],
     }[kind];
-    return el('table', { class: 'data' },
-      el('thead', {}, el('tr', {}, head.map((h) => el('th', {}, h)))),
+    return this.pickTable(head, rows.map((r) => r.code),
       el('tbody', {}, rows.map((r) => el('tr', { class: `clickable ${r.status !== 'in stock' ? 'faded' : ''}`, onclick: () => { location.hash = `${kind}=${r.code}`; } },
         el('td', { class: 'pick' }, this.pick(r.code)),
         el('td', { class: 'code' }, r.code, r.mine ? null : el('span', { class: 'lab-tag', title: `${r.lab}'s: you see it, ${r.lab} changes it` }, r.lab)),

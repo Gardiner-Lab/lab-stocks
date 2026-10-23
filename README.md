@@ -1,6 +1,6 @@
 # Lab Stocks
 
-The Gardiner Lab suite's glycerol stocks, primers, chemicals and antibodies.
+Trellis Tools' glycerol stocks, primers, chemicals and antibodies.
 
 - **Glycerol stocks** are numbered per lab: `GL-G-0042`.
   - Each is linked to the plasmid it holds in the Plasmid Editor's library, and records the clone,
@@ -47,7 +47,7 @@ The Gardiner Lab suite's glycerol stocks, primers, chemicals and antibodies.
 
 ## Running it
 
-It runs inside the [Gardiner Lab suite](https://github.com/Gardiner-Lab/gardiner-lab-suite) at
+It runs inside [Trellis Tools](https://github.com/Gardiner-Lab/gardiner-lab-suite) at
 `/stocks/`, signed in through the suite. Don't expose it outside the proxy.
 
 | Setting | Default | |

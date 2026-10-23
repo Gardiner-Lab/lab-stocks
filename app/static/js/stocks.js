@@ -8,6 +8,8 @@
 
 const ST = window.ST;
 const url = (path) => `${ST.base}${path}`;
+/** One of Trellis Tools' small icons (static/trellis/glyphs/), in place of an emoji. */
+const glyph = (name) => el('img', { class: 'tt-glyph', src: url(`/static/trellis/glyphs/${name}.svg`), alt: '' });
 
 /* --- helpers (as in the Seed Bank) ----------------------------------------------- */
 
@@ -208,14 +210,14 @@ function localTime(stamp) {
 
 
 const today = () => new Date().toISOString().slice(0, 10);
-const ICON = { glycerol: '🧫', primer: '🧬', chemical: '⚗️', antibody: '🔬', material: '🌿' };
+const ICON = { glycerol: 'stocks', primer: 'primer', chemical: 'protocol', antibody: 'antibody', material: 'leaf' };   // glyphs
 const NAME = { glycerol: 'glycerol stock', primer: 'primer', chemical: 'chemical', antibody: 'antibody', material: 'plant material' };
 const NAMES = { glycerol: 'glycerol stocks', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies', material: 'plant material' };
 const PLURAL = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies', material: 'material' };
 const SINGULAR = { glycerol: 'glycerol', primers: 'primer', chemicals: 'chemical', antibodies: 'antibody', material: 'material' };
-const TITLE = { glycerol: '🧫 Glycerol stocks', primer: '🧬 Primers', chemical: '⚗️ Chemicals', antibody: '🔬 Antibodies', material: '🌿 Plant material' };
+const TITLE = { glycerol: 'Glycerol stocks', primer: 'Primers', chemical: 'Chemicals', antibody: 'Antibodies', material: 'Plant material' };
 const SDS = 'SDS';
-const FILE_ICONS = { pdf: '📕', word: '📝', powerpoint: '📽️', excel: '📊', archive: '🗜️', sequence: '🧬', text: '📄', image: '🖼️', file: '📎' };
+const FILE_ICONS = { pdf: 'pdf', word: 'doc', powerpoint: 'slides', excel: 'sheet', archive: 'archive', sequence: 'line', text: 'text', image: 'image', file: 'attach' };
 const fileUrl = (id, download = false) => url(`/api/attachments/${encodeURIComponent(id)}${download ? '?download' : ''}`);
 const sizeLabel = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
 const editorOpen = (id) => `${ST.editor}/editor?open=${encodeURIComponent(id)}`;
@@ -323,7 +325,7 @@ const App = {
       let s;
       try { s = await api('GET', `/elab?lab=${encodeURIComponent(lab)}`); } catch (e) { return; }
       const settings = s.can_set && s.source !== 'settings' ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.6rem',
-        onclick: () => this.connectElab(s, draw) }, s.connected ? 'eLab settings…' : '🔗 Connect to eLabJournal…') : null;
+        onclick: () => this.connectElab(s, draw) }, s.connected ? 'eLab settings…' : [glyph('link'), ' Connect to eLabJournal…']) : null;
       if (!s.connected) {
         if (settings) put(line, 'Keep the lab\'s glycerol stocks and seed lots in eLabJournal\'s inventory too:', settings);
         else put(line);
@@ -469,18 +471,18 @@ const App = {
         material: 'Search by code, name, tissue, species, plant, experiment, who collected it, or where it is',
       }[kind] });
     const table = el('div', { class: 'list' });
-    const labelBtn = el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([...this.selected]) }, '🏷 Labels for selected');
+    const labelBtn = el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([...this.selected]) }, glyph('label'), ' Labels for selected');
     // Primers: the ones ticked go on the order list together.
     const tickedPrimers = () => [...this.selected].filter((c) => /-O-\d+$/.test(c));
     const orderBtn = kind === 'primer' ? el('button', { class: 'btn btn-secondary', title: 'Put the ticked primers on the order list, one order each',
-      onclick: () => this.orderPrimers(tickedPrimers(), draw) }, '🛒 Add selected to order') : null;
+      onclick: () => this.orderPrimers(tickedPrimers(), draw) }, glyph('cart'), ' Add selected to order') : null;
     this.onSelection = () => {
       labelBtn.disabled = !this.selected.size;
-      labelBtn.textContent = `🏷 Labels for selected${this.selected.size ? ` (${this.selected.size})` : ''}`;
+      labelBtn.replaceChildren(glyph('label'), ` Labels for selected${this.selected.size ? ` (${this.selected.size})` : ''}`);
       if (orderBtn) {
         const n = tickedPrimers().length;
         orderBtn.disabled = !n;
-        orderBtn.textContent = `🛒 Add selected to order${n ? ` (${n})` : ''}`;
+        orderBtn.replaceChildren(glyph('cart'), ` Add selected to order${n ? ` (${n})` : ''}`);
       }
     };
     // The other labs of the chair group: shown on request, remembered.
@@ -506,13 +508,13 @@ const App = {
     let timer;
     query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
     put(main,
-      el('div', { class: 'page-head' }, el('h1', {}, TITLE[kind]),
+      el('div', { class: 'page-head' }, el('h1', {}, glyph(ICON[kind]), ' ', TITLE[kind]),
         el('span', { class: 'actions' },
           el('button', { class: 'btn btn-primary', onclick: () => ({ glycerol: () => this.newGlycerol(), primer: () => this.editPrimer(),
             chemical: () => this.editChemical(), antibody: () => this.editAntibody(), material: () => this.editMaterial() })[kind]() },
           { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical', antibody: '＋ Antibody', material: '＋ Tube' }[kind]),
           kind === 'material' ? el('button', { class: 'btn btn-primary', title: 'Many tubes at once: numbered, or a pasted list, and their places in a box',
-            onclick: () => this.boxOfTubes() }, '📦 Box of tubes…') : null, orderBtn, labelBtn)),
+            onclick: () => this.boxOfTubes() }, glyph('box'), ' Box of tubes…') : null, orderBtn, labelBtn)),
       this.labCodeLine(),
       this.chairLine(),
       this.elabLine(),
@@ -521,7 +523,7 @@ const App = {
         primer: 'The lab\'s oligos, with where each tube is. Primers designed in the Plasmid Editor can be saved here, and the editor shows which of them bind a plasmid.',
         chemical: 'The lab\'s chemicals, with the room each is kept in. Open one to add its safety data sheet (SDS).',
         antibody: 'The lab\'s antibodies: primary and secondary, who makes each, the animal it is raised in, and how to use it.',
-        material: 'Plant material kept for later processing: a tube each, often a box of them. Link a tube from the notebook by its code; add a whole box at once with 📦 Box of tubes.',
+        material: 'Plant material kept for later processing: a tube each, often a box of them. Link a tube from the notebook by its code; add a whole box at once with Box of tubes.',
       }[kind], kind === 'chemical' ? this.safetyLinks() : null),
       el('div', { class: 'list-tools' }, query, wideToggle), table);
     await draw();
@@ -582,7 +584,7 @@ const App = {
       primer: (r) => [r.name, el('span', { class: 'mono' }, r.mod5 ? el('span', { class: 'mod-tag' }, r.mod5) : null, r.sequence,
         r.mod3 ? el('span', { class: 'mod-tag' }, r.mod3) : null), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, [r.status, this.onOrderMark(r)]],
       chemical: (r) => [r.name, el('span', { class: 'mono' }, r.cas), r.room, r.size,
-        r.has_sds ? el('span', { title: 'Has its safety data sheet' }, '📕') : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'),
+        r.has_sds ? el('span', { title: 'Has its safety data sheet' }, glyph('pdf')) : el('span', { class: 'hint', title: 'No safety data sheet yet' }, '—'),
         [r.status === 'discarded' || !r.mine ? r.status : this.outToggle(r), this.onOrderMark(r)]],
       antibody: (r) => [el('b', {}, r.short_code), r.description, r.type, r.producer, r.host, el('span', { class: 'mono' }, r.product_number),
         el('span', { class: 'clip', title: r.notes }, r.notes), [r.status, this.onOrderMark(r)]],
@@ -640,20 +642,20 @@ const App = {
       failed: ['not sent', ` (${e.error || 'eLab refused it'})`], archived: ['archived there', ' (used up, discarded or deleted here)'],
       'archived in eLab': ['archived in eLab', ' (by someone there): no longer sent. Restore it there (open it, then Restore), or send it again'],
     }[e.state] || [e.state, ''];
-    return el('p', { class: `elab-fact ${e.state === 'failed' ? 'elab-failed' : ''}` }, '🔗 In eLabJournal: ', link, link ? ' · ' : '', el('b', {}, said[0]), said[1], again);
+    return el('p', { class: `elab-fact ${e.state === 'failed' ? 'elab-failed' : ''}` }, glyph('link'), ' In eLabJournal: ', link, link ? ' · ' : '', el('b', {}, said[0]), said[1], again);
   },
 
   head(rec, title, subtitle, actions) {
     return el('div', { class: 'record-head' },
-      el('div', {}, el('div', { class: 'crumbs' }, el('a', { href: `#${PLURAL[rec.kind]}` }, `${ICON[rec.kind]} All ${NAMES[rec.kind]}`)),
+      el('div', {}, el('div', { class: 'crumbs' }, el('a', { href: `#${PLURAL[rec.kind]}` }, glyph(ICON[rec.kind]), ` All ${NAMES[rec.kind]}`)),
         el('h1', {}, el('span', { class: 'code-badge' }, rec.code), ' ', title),
         subtitle ? el('div', { class: 'hint' }, subtitle) : null, this.onOrder(rec)),
       rec.mine ? null : el('p', { class: 'not-mine' }, `${rec.lab}'s, in your chair group: you see it, only ${rec.lab} changes it.`),
-      !rec.mine ? el('span', { class: 'actions' }, el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, '🏷 Label')) :
+      !rec.mine ? el('span', { class: 'actions' }, el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, glyph('label'), ' Label')) :
       el('span', { class: 'actions' }, actions,
         ['glycerol', 'material'].includes(rec.kind) ? null : el('button', { class: 'btn btn-secondary', title: 'Put it on the lab\'s order list, with its details',
-          onclick: () => this.orderStock(rec) }, '🛒 Add to order'),
-        el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, '🏷 Label'),
+          onclick: () => this.orderStock(rec) }, glyph('cart'), ' Add to order'),
+        el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, glyph('label'), ' Label'),
         el('button', { class: 'btn btn-secondary', title: 'Delete', onclick: () => modal({
           title: `Delete ${rec.code}?`,
           build: (b) => b.append(el('p', {}, 'Better: set its status to used up or discarded, so its history stays. Deleting removes it from the lists; the code is not given out again.')),
@@ -661,7 +663,7 @@ const App = {
             await api('DELETE', `/${PLURAL[rec.kind]}/${rec.code}`);
             location.hash = PLURAL[rec.kind];
           } }],
-        }) }, '🗑')));
+        }) }, glyph('trash'))));
   },
 
   facts(pairs) {
@@ -737,7 +739,7 @@ const App = {
     const open = linked.state === 'open';
     // The plasmid it holds: a link to it in the editor, or why there is none.
     const plasmidFact = open
-      ? el('a', { href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener', title: 'Open in the Plasmid Editor' }, `🧬 ${linked.name || rec.plasmid_name}`)
+      ? el('a', { href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener', title: 'Open in the Plasmid Editor' }, glyph('plasmid'), ` ${linked.name || rec.plasmid_name}`)
       : el('span', {}, rec.plasmid_name || '—', ' ', el('span', { class: 'hint warn-text' }, {
         unlinked: '(not linked to a plasmid in the editor)',
         missing: '(no longer in the Plasmid Editor\'s library)',
@@ -747,10 +749,10 @@ const App = {
       this.head(rec, (linked.name || rec.plasmid_name) + (rec.clone ? ` clone ${rec.clone}` : ''),
         [rec.status, rec.host, rec.location && `kept in ${rec.location}`].filter(Boolean).join(' · '), [
           open ? el('a', { class: 'btn btn-primary', href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener',
-            title: 'Open the plasmid in this stock in the Plasmid Editor' }, '🧬 Open in the Plasmid Editor') : null,
+            title: 'Open the plasmid in this stock in the Plasmid Editor' }, glyph('plasmid'), ' Open in the Plasmid Editor') : null,
           el('button', { class: `btn ${open ? 'btn-secondary' : 'btn-primary'}`, onclick: () => this.linkPlasmid(rec),
             title: open ? 'Link this stock to another plasmid of the editor\'s library' : 'Link this stock to its plasmid in the editor\'s library' },
-          open ? '🔗 Change plasmid…' : '🔗 Link a plasmid…'),
+          glyph('plasmid'), open ? ' Change plasmid…' : ' Link a plasmid…'),
           el('button', { class: 'btn btn-secondary', onclick: () => formModal({
             title: `Edit ${rec.code}`, fields: this.glycerolFields(rec), wide: true,
             submit: async (v) => { await api('PUT', `/glycerol/${rec.code}`, v); this.reload(); },
@@ -771,7 +773,7 @@ const App = {
         ['Insert(s)?', rec.inserts], ['Gene ID(s)', rec.gene_ids], ['Donor organism(s)', rec.donor],
         ['Harmful gene product?', rec.harmful], ['Remarks on harmful effects', rec.harmful_notes]])),
       rec.same_plasmid?.length ? this.section('Other stocks of this plasmid', el('div', { class: 'chips' },
-        rec.same_plasmid.map((s) => el('a', { class: 'chip', href: `#glycerol=${s.code}` }, `🧫 ${s.code}${s.clone ? ` clone ${s.clone}` : ''} · ${s.status}`)))) : null);
+        rec.same_plasmid.map((s) => el('a', { class: 'chip', href: `#glycerol=${s.code}` }, glyph('stocks'), ` ${s.code}${s.clone ? ` clone ${s.clone}` : ''} · ${s.status}`)))) : null);
   },
 
   /**
@@ -915,7 +917,7 @@ const App = {
   editMaterial(rec) {
     formModal({
       title: rec ? `Edit ${rec.code}` : 'New tube of plant material', wide: true,
-      intro: rec ? null : 'One tube. For a box of them at once, use 📦 Box of tubes.',
+      intro: rec ? null : 'One tube. For a box of them at once, use Box of tubes.',
       fields: this.materialFields(rec),
       submit: async (v) => {
         const res = rec ? await api('PUT', `/material/${rec.code}`, v) : await api('POST', '/material', { ...v, lab: this.chosenLab });
@@ -1231,9 +1233,9 @@ const App = {
   safetyLinks(cas) {
     return el('span', { class: 'safety-links' },
       el('a', { class: 'btn btn-secondary btn-sm', href: ST.sofos, target: '_blank', rel: 'noopener',
-        title: 'Utrecht University\'s register of hazardous substances (SOFOS)' }, '🛡 SOFOS ↗'),
+        title: 'Utrecht University\'s register of hazardous substances (SOFOS)' }, glyph('shield'), ' SOFOS ↗'),
       el('a', { class: 'btn btn-secondary btn-sm', href: ST.chemwatch, target: '_blank', rel: 'noopener',
-        title: cas ? `Chemwatch: search it for CAS ${cas}` : 'Chemwatch' }, '☣ Chemwatch ↗'));
+        title: cas ? `Chemwatch: search it for CAS ${cas}` : 'Chemwatch' }, glyph('hazard'), ' Chemwatch ↗'));
   },
 
   chemicalView(rec) {
@@ -1253,10 +1255,10 @@ const App = {
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null,
       this.section('Safety data sheet',
         el('div', { class: 'sds' },
-          sds ? el('span', {}, el('a', { class: 'btn btn-primary', href: fileUrl(sds.id), target: '_blank', rel: 'noopener' }, `📕 Open the SDS`),
+          sds ? el('span', {}, el('a', { class: 'btn btn-primary', href: fileUrl(sds.id), target: '_blank', rel: 'noopener' }, glyph('pdf'), ' Open the SDS'),
             el('span', { class: 'hint' }, ` ${sds.filename} · ${sizeLabel(sds.size)} · added by ${sds.created_by || '—'} ${localTime(sds.created_at)}`))
             : el('span', { class: 'hint' }, 'No safety data sheet yet. '),
-          !rec.mine ? null : el('label', { class: `btn ${sds ? 'btn-secondary' : 'btn-primary'} btn-sm` }, sds ? 'Replace the SDS…' : '📕 Add the SDS (PDF)…', sdsInput)),
+          !rec.mine ? null : el('label', { class: `btn ${sds ? 'btn-secondary' : 'btn-primary'} btn-sm` }, sds ? 'Replace the SDS…' : [glyph('pdf'), ' Add the SDS (PDF)…'], sdsInput)),
         el('p', { class: 'hint' }, rec.cas ? `Look it up by its CAS number, ${rec.cas}:` : 'Look it up:', ' ', this.safetyLinks(rec.cas))));
   },
 
@@ -1316,13 +1318,13 @@ const App = {
   onOrder(rec) {
     const o = rec.order;
     if (!o) return null;
-    return el('div', { class: 'on-order' }, el('a', { href: '#orders' }, '🛒 On the order list'), ': ',
+    return el('div', { class: 'on-order' }, el('a', { href: '#orders' }, glyph('cart'), ' On the order list'), ': ',
       o.status === 'ordered' ? `ordered ${localTime(o.ordered_at).slice(0, 10)}, waiting for it to arrive`
         : `asked for by ${o.requested_by || '—'} ${localTime(o.requested_at).slice(0, 10)}${o.auto ? ' (marked out)' : ''}, not ordered yet`);
   },
 
   onOrderMark(r) {
-    return r.on_order ? el('span', { class: 'on-order-mark', title: 'On the order list' }, ' 🛒') : null;
+    return r.on_order ? el('span', { class: 'on-order-mark', title: 'On the order list' }, ' ', glyph('cart')) : null;
   },
 
   /** The primers ticked in the list, on the order list at once: one order each, with the same amount and note. */
@@ -1336,7 +1338,7 @@ const App = {
         { name: 'notes', label: 'Note for the lab admin', type: 'textarea', placeholder: 'e.g. for the Golden Gate assembly' },
         { name: 'urgent', label: 'Urgent', type: 'checkbox' },
       ],
-      label: '🛒 Add to order',
+      label: [glyph('cart'), ' Add to order'],
       submit: async (v) => {
         const res = await api('POST', '/orders/many', { ...v, records: codes });
         const n = res.made.length;
@@ -1360,7 +1362,7 @@ const App = {
         { name: 'notes', label: 'Note for the lab admin', type: 'textarea', placeholder: 'e.g. needed for Friday\'s westerns' },
         { name: 'urgent', label: 'Urgent', type: 'checkbox' },
       ],
-      label: '🛒 Add to order',
+      label: [glyph('cart'), ' Add to order'],
       submit: async (v) => {
         const res = await api('POST', '/orders', { ...v, record: rec.code });
         toast(res.already ? 'It was on the order list already' : 'On the order list', 'success', 3000);
@@ -1388,9 +1390,9 @@ const App = {
     const labs = this.meta.lab.labs;
     formModal({
       title: 'Order request',
-      intro: `Ask for anything the lab needs: enzymes, kits, consumables, chemicals.${labs.length > 1 ? ` It goes to ${this.meta.lab.lab}'s lab admin (choose another lab at the top).` : ' The lab admin orders it.'} For a chemical, primer or antibody the lab already has, use 🛒 Add to order on its page instead: its details come along.`,
+      intro: `Ask for anything the lab needs: enzymes, kits, consumables, chemicals.${labs.length > 1 ? ` It goes to ${this.meta.lab.lab}'s lab admin (choose another lab at the top).` : ' The lab admin orders it.'} For a chemical, primer or antibody the lab already has, use Add to order on its page instead: its details come along.`,
       fields: this.orderFields(null),
-      label: '🛒 Send the request',
+      label: [glyph('cart'), ' Send the request'],
       submit: async (v) => {
         await api('POST', '/orders', { ...v, lab: this.chosenLab });
         toast('Request sent to the lab admin', 'success', 3000);
@@ -1421,7 +1423,7 @@ const App = {
     });
     const out = [];
     if (o.can_handle && o.status === 'requested') out.push(el('button', { class: 'btn btn-primary btn-sm', onclick: stop(() => this.setOrder(o, { status: 'ordered' }, `${o.item}: ordered`)) }, '✓ Ordered'));
-    if (o.can_handle && o.status === 'ordered') out.push(el('button', { class: 'btn btn-primary btn-sm', onclick: stop(() => this.setOrder(o, { status: 'received' }, `${o.item}: received${o.record_code ? `; ${o.record_code} is in stock` : ''}`)) }, '📦 Received'));
+    if (o.can_handle && o.status === 'ordered') out.push(el('button', { class: 'btn btn-primary btn-sm', onclick: stop(() => this.setOrder(o, { status: 'received' }, `${o.item}: received${o.record_code ? `; ${o.record_code} is in stock` : ''}`)) }, glyph('box'), ' Received'));
     if ((o.can_handle && ['requested', 'ordered'].includes(o.status)) || (o.can_change && o.status === 'requested')) {
       out.push(el('button', { class: 'btn btn-secondary btn-sm', title: 'Cancel', onclick: stop(cancel) }, '✕'));
     }
@@ -1453,12 +1455,12 @@ const App = {
     query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
     filter.addEventListener('change', draw);
     put(main,
-      el('div', { class: 'page-head' }, el('h1', {}, '🛒 Orders'),
+      el('div', { class: 'page-head' }, el('h1', {}, glyph('cart'), ' Orders'),
         el('span', { class: 'actions' }, el('button', { class: 'btn btn-primary', onclick: () => this.orderRequest() }, '＋ Order request'),
           handles.length ? sheet : null)),
       el('p', { class: 'hint' }, handles.length
-        ? `You order for ${handles.join(', ')}: these are the lab's requests, from the request form, 🛒 Add to order on a chemical, primer or antibody, and chemicals switched to Out. Mark each ✓ Ordered when you have ordered it, and 📦 Received when it arrives; a stock that had run out is then back in stock. Orders of the other labs of your chair group are shown too, marked with their lab; their own lab admins order them.`
-        : 'Ask for what the lab needs with ＋ Order request, or 🛒 Add to order on a chemical, primer or antibody; a chemical switched to Out is added by itself. Your lab admin orders it. These are the orders of your lab, and of the other labs of its chair group (marked with their lab), and how far each has got.'),
+        ? `You order for ${handles.join(', ')}: these are the lab's requests, from the request form, Add to order on a chemical, primer or antibody, and chemicals switched to Out. Mark each ✓ Ordered when you have ordered it, and Received when it arrives; a stock that had run out is then back in stock. Orders of the other labs of your chair group are shown too, marked with their lab; their own lab admins order them.`
+        : 'Ask for what the lab needs with ＋ Order request, or Add to order on a chemical, primer or antibody; a chemical switched to Out is added by itself. Your lab admin orders it. These are the orders of your lab, and of the other labs of its chair group (marked with their lab), and how far each has got.'),
       el('div', { class: 'list-tools' }, filter, query), table);
     await draw();
   },
@@ -1470,7 +1472,7 @@ const App = {
       el('thead', {}, el('tr', {}, ['#', 'What', 'Kind', 'How much', 'Supplier', 'Product number', 'Asked by', 'Status', ''].map((h) => el('th', {}, h)))),
       el('tbody', {}, rows.map((o) => el('tr', { class: `clickable ${['received', 'cancelled'].includes(o.status) ? 'faded' : ''}`, onclick: () => this.openOrder(o) },
         el('td', { class: 'code' }, o.id),
-        el('td', {}, o.urgent ? el('span', { class: 'urgent', title: 'Urgent' }, '❗ ') : null, el('b', {}, o.item),
+        el('td', {}, o.urgent ? el('span', { class: 'urgent', title: 'Urgent' }, glyph('alert'), ' ') : null, el('b', {}, o.item),
           o.own_lab ? null : el('span', { class: 'lab-tag', title: `${o.lab}'s order, in your chair group: ${o.lab}'s lab admin orders it` }, o.lab),
           o.record_code ? [' ', el('a', { class: 'code-badge', href: `#${o.record_kind}=${o.record_code}`, onclick: (e) => e.stopPropagation() }, o.record_code)] : null,
           o.details ? el('div', { class: 'hint clip' }, o.details) : null,
@@ -1529,9 +1531,9 @@ const App = {
         el('img', { src: fileUrl(a.id), loading: 'lazy', alt: a.filename, onclick: () => window.open(fileUrl(a.id), '_blank', 'noopener') }),
         el('figcaption', {}, a.filename)))) : null,
       list.filter((a) => !a.image).length ? el('ul', { class: 'file-list' }, list.filter((a) => !a.image).map((a) => el('li', {},
-        el('span', { class: 'file-icon' }, FILE_ICONS[a.kind] || '📎'), el('a', { href: fileUrl(a.id), target: '_blank', rel: 'noopener' }, a.filename),
+        el('span', { class: 'file-icon' }, glyph(FILE_ICONS[a.kind] || 'attach')), el('a', { href: fileUrl(a.id), target: '_blank', rel: 'noopener' }, a.filename),
         el('span', { class: 'hint' }, ` ${sizeLabel(a.size)} · ${a.created_by || ''}`)))) : null,
-      rec.mine ? el('label', { class: 'btn btn-secondary btn-sm' }, '📎 Add photos or files…',
+      rec.mine ? el('label', { class: 'btn btn-secondary btn-sm' }, glyph('attach'), ' Add photos or files…',
         el('input', { type: 'file', multiple: true, hidden: true, onchange: (e) => this.upload(rec, [...e.target.files]) })) : null);
     zone.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); zone.classList.add('drop'); } });
     zone.addEventListener('dragleave', () => zone.classList.remove('drop'));
@@ -1542,7 +1544,7 @@ const App = {
   mentions(rec) {
     if (!rec.mentions?.length) return null;
     return this.section('In the lab notebook', el('ul', { class: 'plain' }, rec.mentions.map((m) => el('li', {},
-      el('a', { href: `${ST.notebook}/#note=${m.id}`, target: '_blank', rel: 'noopener' }, `📓 ${m.title}`),
+      el('a', { href: `${ST.notebook}/#note=${m.id}`, target: '_blank', rel: 'noopener' }, glyph('notebook'), ` ${m.title}`),
       el('span', { class: 'hint' }, m.owner ? ` · ${m.owner}` : ' · protocol library')))));
   },
 

@@ -5,6 +5,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Trellis Tools' look**: the header every module shares (Trellis Tools, then this module's icon and name,
+  its tabs, the person and Log out), and the suite's palette - green for what you do, brown for structure,
+  on warm paper-white - from static/trellis/trellis.css, copied in from the suite (design/sync.sh).
+- Trellis Tools' small icons instead of emoji: the kinds of stock, orders, boxes of tubes, safety links (SOFOS,
+  Chemwatch), labels, files and plasmids.
+
 ## [0.5.3] - 2026-10-23
 
 ### Changed

@@ -57,7 +57,7 @@ It runs inside the [Gardiner Lab suite](https://github.com/Gardiner-Lab/gardiner
 | `EDITOR_DATABASE_PATH` | `/editor/plasmid_editor.db` | plasmids (read only) |
 | `NOTEBOOK_DATABASE_PATH` | `/notebook/notebook.db` | notebook links (read only) |
 | `SEEDS_DATABASE_PATH` | `/seeds/seeds.db` | the lab codes chosen in the Seed Bank (read only) |
-| `SUITE_PUBLIC_URL` | (the page's own address) | where phones reach the suite, for label QR codes |
+| `SUITE_PUBLIC_URL` | (the page's own address) | where phones reach the suite, for label QR codes; the suite dashboard's Hosting tab sets it instead |
 | `SOFOS_URL` | UU's SOFOS information portal | the hazardous substances register chemicals link to |
 | `CHEMWATCH_URL` | `https://jr.chemwatch.net/chemwatch.web/` | Chemwatch, which chemicals link to |
 | `ELAB_URL`, `ELAB_TOKEN` | (off) | copy every lab's glycerol stocks and seed lots to eLabJournal, for labs not connected on the page (below) |

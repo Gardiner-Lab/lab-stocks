@@ -262,3 +262,15 @@ def test_antibodies(as_user):
     # Linked from the notebook.
     assert _ok(ana.get('/api/search?q=aMs'))['results'] == [
         {'kind': 'antibody', 'code': 'GARD-A-0002', 'label': 'GARD-A-0002 aMs-HRP (secondary, goat)'}]
+
+
+def test_label_codes_open_the_public_address_set_on_the_dashboard(world, monkeypatch):
+    from app import people
+    monkeypatch.setenv('SUITE_PUBLIC_URL', 'https://old.example.org/')
+    assert people.public_url() == 'https://old.example.org'
+    conn = sqlite3.connect(world['paths']['suite'])
+    conn.execute('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)')
+    conn.execute("INSERT INTO settings VALUES ('hosting.public_url', 'https://lab.example.org')")
+    conn.commit()
+    conn.close()
+    assert people.public_url() == 'https://lab.example.org'

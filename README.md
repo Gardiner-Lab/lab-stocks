@@ -38,7 +38,8 @@ The Gardiner Lab suite's glycerol stocks, primers, chemicals and antibodies.
   - Everyone else sees their own requests and how far each has got, and can change or cancel one
     until it is ordered.
 - **Shared with the other tools:**
-  - storage, labels with QR codes, photos and files;
+  - storage, labels with QR codes (printed from the browser, or as files for DYMO Connect on LabTAG
+    DYMO labels), photos and files;
   - links from the Lab Notebook (`@`), with the pages that mention each stock.
 - **Who sees what:** a lab's stocks are shared within the lab and not seen by other labs.
   Administrators see all. Every change is logged.

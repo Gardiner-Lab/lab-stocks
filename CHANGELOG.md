@@ -5,7 +5,7 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-10-23
+## [0.7.0] - 2026-10-24
 
 ### Added
 - A glycerol stock's **Family tree ↗**: in the Seed Bank, the lines made with its plasmid, their seeds and plants.

@@ -750,6 +750,9 @@ const App = {
         [rec.status, rec.host, rec.location && `kept in ${rec.location}`].filter(Boolean).join(' · '), [
           open ? el('a', { class: 'btn btn-primary', href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener',
             title: 'Open the plasmid in this stock in the Plasmid Editor' }, glyph('plasmid'), ' Open in the Plasmid Editor') : null,
+          rec.plasmid_id ? el('a', { class: 'btn btn-secondary', href: `${ST.seeds}/#tree=plasmid:${encodeURIComponent(rec.plasmid_id)}`,
+            target: '_blank', rel: 'noopener', title: 'In the Seed Bank: the lines made with this plasmid, their seeds and plants, and the notebook pages about each' },
+          glyph('link'), ' Family tree ↗') : null,
           el('button', { class: `btn ${open ? 'btn-secondary' : 'btn-primary'}`, onclick: () => this.linkPlasmid(rec),
             title: open ? 'Link this stock to another plasmid of the editor\'s library' : 'Link this stock to its plasmid in the editor\'s library' },
           glyph('plasmid'), open ? ' Change plasmid…' : ' Link a plasmid…'),

@@ -67,6 +67,7 @@ It runs inside [Trellis Tools](https://github.com/Gardiner-Lab/gardiner-lab-suit
 | `ELAB_INTERVAL` | `120` | seconds between checks for changes |
 | `ELAB_HOSTS` | `elabjournal.com,elabnext.com` | the hosts (and their subdomains) a lab may connect to |
 | `ELAB_OTHERS_BY` | `admin` | who is credited with what is brought over from people outside the lab |
+| `CONVERTER_URL` | none | the suite's file converter (Gotenberg), to open Word, PowerPoint and Excel files in the browser as PDFs; unset, they download |
 
 ## Plant material
 

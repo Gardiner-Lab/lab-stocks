@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request
 
-from app import attachments, chairs, elab, oligo, orders, people, records, sources
+from app import attachments, chairs, elab, oligo, orders, people, records, sources, viewer
 from app.db import connect
 
 api = Blueprint('api', __name__)
@@ -550,6 +550,10 @@ def add_attachments(person, collection, ident):
 @signed_in
 def get_attachment(person, att_id):
     found = attachments.fetch(person, att_id)
+    if request.args.get('view') is not None:
+        viewed = _viewed(found)
+        if viewed is not None:
+            return viewed
     shown = (found['inline'] or found['preview']) and request.args.get('download') is None
     response = Response(found['data'], mimetype=attachments.sent_as(found['mime']))
     response.headers['Content-Disposition'] = (f"{'inline' if shown else 'attachment'}; "
@@ -557,6 +561,30 @@ def get_attachment(person, att_id):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Content-Security-Policy'] = ("default-src 'none'" if found['preview'] and shown
                                                     else "default-src 'none'; sandbox")
+    response.headers['Cache-Control'] = 'private, max-age=86400'
+    return response
+
+
+def _viewed(found):
+    """A file shown in the browser: an office file as a PDF, a text file as plain text; None to send it as it is."""
+    name = quote(found['filename'])
+    text = viewer.as_text(found['kind'], found['data'])
+    if text is not None:
+        response = Response(text, mimetype='text/plain')
+        response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    elif viewer.converted(found['kind']):
+        try:
+            pdf = viewer.as_pdf(found['sha256'], found['filename'], found['mime'], found['data'])
+        except viewer.ViewerError as exc:
+            return Response(f"{found['filename']} cannot be shown here: {exc}. Download it to open it in its program.",
+                            status=502, mimetype='text/plain')
+        response = Response(pdf, mimetype='application/pdf')
+        response.headers['Content-Security-Policy'] = "default-src 'none'"
+        name += '.pdf'
+    else:
+        return None
+    response.headers['Content-Disposition'] = f"inline; filename*=UTF-8''{name}"
+    response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Cache-Control'] = 'private, max-age=86400'
     return response
 

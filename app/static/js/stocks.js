@@ -219,6 +219,8 @@ const TITLE = { glycerol: 'Glycerol stocks', primer: 'Primers', chemical: 'Chemi
 const SDS = 'SDS';
 const FILE_ICONS = { pdf: 'pdf', word: 'doc', powerpoint: 'slides', excel: 'sheet', archive: 'archive', sequence: 'line', text: 'text', image: 'image', file: 'attach' };
 const fileUrl = (id, download = false) => url(`/api/attachments/${encodeURIComponent(id)}${download ? '?download' : ''}`);
+// Office and text files open in the browser (an office file as a PDF); the original still downloads.
+const viewUrl = (id) => url(`/api/attachments/${encodeURIComponent(id)}?view`);
 const sizeLabel = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
 const editorOpen = (id) => `${ST.editor}/editor?open=${encodeURIComponent(id)}`;
 const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', R: 'Y', Y: 'R', S: 'S', W: 'W', K: 'M', M: 'K', B: 'V', V: 'B', D: 'H', H: 'D', N: 'N' };
@@ -1603,8 +1605,10 @@ const App = {
         el('img', { src: fileUrl(a.id), loading: 'lazy', alt: a.filename, onclick: () => window.open(fileUrl(a.id), '_blank', 'noopener') }),
         el('figcaption', {}, a.filename)))) : null,
       list.filter((a) => !a.image).length ? el('ul', { class: 'file-list' }, list.filter((a) => !a.image).map((a) => el('li', {},
-        el('span', { class: 'file-icon' }, glyph(FILE_ICONS[a.kind] || 'attach')), el('a', { href: fileUrl(a.id), target: '_blank', rel: 'noopener' }, a.filename),
-        el('span', { class: 'hint' }, ` ${sizeLabel(a.size)} · ${a.created_by || ''}`)))) : null,
+        el('span', { class: 'file-icon' }, glyph(FILE_ICONS[a.kind] || 'attach')), el('a', { href: a.view ? viewUrl(a.id) : fileUrl(a.id), target: '_blank', rel: 'noopener',
+          title: a.view || a.preview ? 'Open it in a new tab' : 'Download, to open in its program' }, a.filename),
+        el('span', { class: 'hint' }, ` ${sizeLabel(a.size)} · ${a.created_by || ''}`),
+        a.view || a.preview ? el('a', { class: 'hint', href: fileUrl(a.id, true) }, 'download') : null))) : null,
       rec.mine ? el('label', { class: 'btn btn-secondary btn-sm' }, glyph('attach'), ' Add photos or files…',
         el('input', { type: 'file', multiple: true, hidden: true, onchange: (e) => this.upload(rec, [...e.target.files]) })) : null);
     zone.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); zone.classList.add('drop'); } });

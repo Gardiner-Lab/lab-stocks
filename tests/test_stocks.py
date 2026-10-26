@@ -285,3 +285,52 @@ def test_someone_who_left_is_not_offered_any_more(world):
     conn.commit()
     conn.close()
     assert 'ben' not in people.people() and people.archived() == {'ben': '2026-10-23T10:00:00Z'}
+
+
+def test_office_and_text_files_open_in_the_browser(as_user, monkeypatch):
+    import http.server
+    import threading
+    calls = []
+
+    class Converter(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers['Content-Length']))
+            calls.append((self.path, b'filename="plan.docx"' in body))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'%PDF-1.4 the plan')
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(('127.0.0.1', 0), Converter)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    ana = as_user('ana')
+    g = _ok(ana.post('/api/glycerol', json={'plasmid_name': 'pGFP', 'clone': '2'}), 201)['record']
+    docx = b'PK\x03\x04' + b'\x00' * 40
+    word, fasta = _ok(ana.post(f"/api/glycerol/{g['code']}/attachments", content_type='multipart/form-data',
+                               data={'file': [(io.BytesIO(docx), 'plan.docx'), (io.BytesIO(b'>p1\nACGT\n'), 'p1.fa')]}),
+                      201)['attachments']
+    # Without the suite's converter an office file only downloads.
+    assert word['view'] is False and fasta['view'] is True
+    assert ana.get(f"/api/attachments/{word['id']}?view").headers['Content-Disposition'].startswith('attachment')
+    shown = ana.get(f"/api/attachments/{fasta['id']}?view")
+    assert shown.mimetype == 'text/plain' and shown.headers['Content-Disposition'].startswith('inline')
+    assert 'sandbox' in shown.headers['Content-Security-Policy']
+    monkeypatch.setenv('CONVERTER_URL', f'http://127.0.0.1:{server.server_port}')
+    assert _ok(ana.get(f"/api/glycerol/{g['code']}"))['record']['attachments'][0]['view'] is True
+    for _ in range(2):
+        pdf = ana.get(f"/api/attachments/{word['id']}?view")
+        assert pdf.mimetype == 'application/pdf' and pdf.data == b'%PDF-1.4 the plan'
+        assert pdf.headers['Content-Disposition'] == "inline; filename*=UTF-8''plan.docx.pdf"
+    assert calls == [('/forms/libreoffice/convert', True)], 'converted once, then kept'
+    # The original still downloads, and others' files stay hidden.
+    assert ana.get(f"/api/attachments/{word['id']}?download").data == docx
+    assert as_user('zoe').get(f"/api/attachments/{word['id']}?view").status_code == 404
+    server.shutdown()
+    # A converter that is down: a message, and the download still works.
+    monkeypatch.setenv('CONVERTER_URL', 'http://127.0.0.1:9')
+    other = _ok(ana.post(f"/api/glycerol/{g['code']}/attachments", content_type='multipart/form-data',
+                         data={'file': [(io.BytesIO(docx + b'x'), 'other.xls')]}), 201)['attachments'][0]
+    failed = ana.get(f"/api/attachments/{other['id']}?view")
+    assert failed.status_code == 502 and b'Download it' in failed.data

@@ -504,7 +504,8 @@ def create_material(person: Person, items: List[dict], shared: dict, lab: Option
     """
     Several tubes of plant material at once (a box of them): each item its own name and fields, the
     shared fields for all. Gives their ids, in order. All or none are made. owners: brought over from
-    eLab, each tube's owner there, who made it (the history says who brought it over).
+    eLab, each tube's owner there, who made it (the history says who brought it over), or whom elab.maker
+    credits.
     """
     items = [i for i in (items or []) if isinstance(i, dict)]
     if not items:
@@ -518,11 +519,13 @@ def create_material(person: Person, items: List[dict], shared: dict, lab: Option
         for n, fields in enumerate(rows):
             record_id = secrets.token_hex(12)
             code = _code(conn, 'material', lab)
+            by = person.username
             if owners is not None:
-                fields = {**fields, 'source': 'elab'}
+                fields = {**fields, 'source': 'elab', 'elab_owner': (owners[n] or '').strip()}
+                by = (elab.maker(lab, owners[n], conn) if (owners[n] or '').strip() else '') or person.username
             cols = ['id', 'code', 'lab', 'created_by', *fields]
             conn.execute(f'INSERT INTO material ({", ".join(cols)}) VALUES ({", ".join("?" * len(cols))})',
-                         (record_id, code, lab, (owners[n] if owners is not None else '') or person.username, *fields.values()))
+                         (record_id, code, lab, by, *fields.values()))
             _log(conn, 'material', record_id, person.username, f'created {code}' + (
                 ' (brought over from eLab)' if owners is not None else ' (one of several)' if len(rows) > 1 else ''))
             made.append(record_id)
@@ -538,7 +541,7 @@ def create_noting(person: Person, kind: str, data: dict, owner: Optional[str] = 
     """
     Makes a record; gives its id, and what it did to the order list (a chemical made out), or None.
     owner: a glycerol stock brought over from eLab, its owner there, who made it (the history says who
-    brought it over).
+    brought it over), or whom elab.maker credits.
     """
     fields = FIELDS[kind](data, partial=False)
     if kind == 'glycerol':
@@ -547,9 +550,13 @@ def create_noting(person: Person, kind: str, data: dict, owner: Optional[str] = 
     with connect() as conn:
         record_id = secrets.token_hex(12)
         code = _code(conn, kind, lab)
+        by = person.username
+        if owner is not None and kind == 'glycerol':
+            fields['elab_owner'] = owner.strip()
+            by = (elab.maker(lab, owner, conn) if owner.strip() else '') or person.username
         cols = ['id', 'code', 'lab', 'created_by', *fields]
         conn.execute(f'INSERT INTO {TABLE[kind]} ({", ".join(cols)}) VALUES ({", ".join("?" * len(cols))})',
-                     (record_id, code, lab, owner or person.username, *fields.values()))
+                     (record_id, code, lab, by, *fields.values()))
         _log(conn, kind, record_id, person.username,
              f'created {code}' + {'sequencing': ' on confirming the plasmid by sequencing',
                                   'elab': ' (brought over from eLab)'}.get(fields.get('source'), ''))

@@ -5,6 +5,20 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
+### Added
+- **The lab's own people in eLab** (the lab admin, in Bring over from eLab): tick which of eLab's owners are the
+  lab's own, each with their account here if they have one. What they own in eLab is credited to them; what anyone
+  else owns, in a group shared with other labs, is credited to the administrator (`ELAB_OTHERS_BY`, default
+  `admin`). Every stock and tube brought over keeps its owner in eLab, shown on its page as "Owner in eLab"
+  when someone else is credited. Saving credits what is here again at once, and the hourly look at eLab's
+  owners keeps it so. With none ticked, each is credited to its owner in eLab, as before.
+
+### Fixed
+- Bringing over a glycerol stock or tube that eLab keeps in a compartment without a place in it (position -1
+  there) stopped its batch with "A storage location in eLab is chosen from the list".
+
 ## [0.9.0] - 2026-10-26
 
 ### Added

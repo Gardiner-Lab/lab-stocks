@@ -66,6 +66,7 @@ It runs inside [Trellis Tools](https://github.com/Gardiner-Lab/gardiner-lab-suit
 | `ELAB_SAMPLE_TYPES` | Glycerol Stock, Plant Seed | other sample type names, e.g. `seed=Seeds` |
 | `ELAB_INTERVAL` | `120` | seconds between checks for changes |
 | `ELAB_HOSTS` | `elabjournal.com,elabnext.com` | the hosts (and their subdomains) a lab may connect to |
+| `ELAB_OTHERS_BY` | `admin` | who is credited with what is brought over from people outside the lab |
 
 ## Plant material
 
@@ -87,6 +88,12 @@ tubes here, in their places; seed samples to the Seed Bank, one line per cross
 or note with each sample a seed lot of it (made through the Seed Bank's own
 API, as the person signed in). Each is linked to its sample in eLab, which keeps
 its name; nothing is changed there until the record is changed here.
+
+What is brought over is credited to its owner in eLab. In a group shared with
+other labs, *The lab's own people…* there chooses which owners are the lab's,
+each with their account here if they have one: theirs are credited to them, and
+everyone else's to the administrator (`ELAB_OTHERS_BY`), each keeping its owner
+in eLab, shown on its page.
 
 ## Chair groups
 

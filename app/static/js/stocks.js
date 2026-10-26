@@ -778,7 +778,8 @@ const App = {
           rec.source === 'sequencing' ? '✓ confirmed by sequencing: see the reads' : 'see the reads') : null],
         ['Clone', rec.clone], ['Strain', rec.host], ['Selection', rec.selection], ['Kept in', rec.location],
         ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
-        ['Made on', rec.made_on], ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
+        ['Made on', rec.made_on], ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`],
+        ['Owner in eLab', rec.elab_owner && rec.elab_owner !== rec.created_by ? rec.elab_owner : null]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null,
       this.section('Biosafety', this.facts([
         ['Permit', rec.permit || el('span', { class: 'hint' }, 'the lab\'s')],
@@ -950,7 +951,8 @@ const App = {
         ['Description', rec.description], ['Collected', [rec.collected_on, rec.collected_by && `by ${rec.collected_by}`].filter(Boolean).join(' ')],
         ['Experiment', rec.experiment], ['Kept in', rec.location],
         ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
-        ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
+        ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`],
+        ['Owner in eLab', rec.elab_owner && rec.elab_owner !== rec.created_by ? rec.elab_owner : null]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null);
   },
 
@@ -1033,6 +1035,44 @@ const App = {
     let kind = 'glycerol';
     let samples = [];
     const owners = el('div', { class: 'import-owners' });
+    // The lab's own people among eLab's owners: theirs credited to them, everyone else's to the administrator.
+    const peopleBox = el('div', { class: 'import-people' });
+    let found = { owners: [], people: {}, accounts: [], others_by: 'admin' };
+    const drawPeople = (open = false) => {
+      const chosen = Object.keys(found.people);
+      const said = chosen.length
+        ? `Credited to the lab's own people: ${chosen.join(', ')}; everyone else's to ${found.others_by}, their owner in eLab kept.`
+        : 'Each is credited to its owner in eLab.';
+      if (!open) {
+        put(peopleBox, el('span', { class: 'hint' }, said, ' '),
+          el('button', { class: 'btn btn-secondary btn-sm', type: 'button', onclick: () => drawPeople(true) }, 'The lab\'s own people…'));
+        return;
+      }
+      const rows = found.owners.map(([o]) => o).filter(Boolean).map((o) => {
+        const tick = el('input', { type: 'checkbox', checked: o in found.people });
+        const account = el('select', {}, el('option', { value: '' }, '— no account here —'),
+          ...found.accounts.map((u) => el('option', { value: u }, u)));
+        account.value = found.people[o] || '';
+        return { o, tick, account, row: el('tr', {}, el('td', {}, el('label', {}, tick, ` ${o}`)), el('td', {}, account)) };
+      });
+      const save = el('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: async () => {
+        save.disabled = true;
+        try {
+          const res = await api('PUT', '/elab/people', { lab,
+            people: Object.fromEntries(rows.filter((r) => r.tick.checked).map((r) => [r.o, r.account.value])) });
+          found = { ...found, people: res.people };
+          toast(`Saved${res.credited ? `: ${res.credited} credited again` : ''}`, 'success', 6000);
+          drawPeople();
+        } catch (e) { toast(e.message, 'error', 7000); } finally { save.disabled = false; }
+      } }, 'Save');
+      put(peopleBox,
+        el('p', { class: 'hint' }, `Tick the lab's own people among eLab's owners, and their account here: what they own is credited `,
+          `to them. Everyone else's is credited to ${found.others_by}, its owner in eLab kept. None ticked: each is credited to its owner.`),
+        el('table', { class: 'data' }, el('thead', {}, el('tr', {}, el('th', {}, 'Owner in eLab'), el('th', {}, 'Account here'))),
+          el('tbody', {}, rows.map((r) => r.row))),
+        el('div', { class: 'elab-nav' }, el('span', { style: 'flex:1' }),
+          el('button', { class: 'btn btn-secondary btn-sm', type: 'button', onclick: () => drawPeople() }, 'Cancel'), save));
+    };
     const where = el('input', { type: 'search', placeholder: 'Only those kept in… e.g. Tower N, Gardiner Lab' });
     const summary = el('p', {});
     const table = el('div', { class: 'import-preview' });
@@ -1074,9 +1114,11 @@ const App = {
       put(summary, 'Asking eLab… (with thousands of samples in the group, this can take a minute)');
       put(owners);
       put(table);
-      const found = await api('GET', `/elab/import?lab=${encodeURIComponent(lab)}&kind=${kind}${refresh ? '&refresh=1' : ''}`);
+      const got = await api('GET', `/elab/import?lab=${encodeURIComponent(lab)}&kind=${kind}${refresh ? '&refresh=1' : ''}`);
       if (mine !== asked) return;
+      found = got;
       samples = found.samples;
+      drawPeople();
       ticked.clear();
       // Everyone owning any there, also those whose samples are all here already (nothing to tick).
       put(owners, el('span', { class: 'hint' }, 'Owned in eLab by: '), found.owners.map(([o, n, here]) => el('label', {
@@ -1147,7 +1189,7 @@ const App = {
         el('p', { class: 'hint' }, 'eLab\'s samples not yet linked to a record here. Each one brought over is linked to its sample in eLab, ',
           'which keeps its name; after that it follows changes made here, as other stocks do.'),
         el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'What'), kindPick),
-        owners, el('label', { class: 'field' }, where), summary, table, progress, el('div', { class: 'elab-nav' }, el('span', { style: 'flex:1' }), go)) });
+        owners, peopleBox, el('label', { class: 'field' }, where), summary, table, progress, el('div', { class: 'elab-nav' }, el('span', { style: 'flex:1' }), go)) });
     load().catch((err) => put(summary, err.message));
   },
 

@@ -185,7 +185,48 @@ def elab_import_list(person):
         counts = owners.setdefault(s['owner'], [0, 0])
         counts[1 if s['here'] else 0] += 1
     return jsonify({'samples': [{k: v for k, v in s.items() if k not in ('meta', 'here')} for s in found if not s['here']],
-                    'owners': sorted(([o, *n] for o, n in owners.items()), key=lambda o: (-o[1], -o[2]))})
+                    'owners': sorted(([o, *n] for o, n in owners.items()), key=lambda o: (-o[1], -o[2])),
+                    **_lab_people(lab)})
+
+
+def _lab_people(lab: str) -> dict:
+    """The lab's own people in eLab, {owner: account here or ''}; who gets the rest; the lab's accounts, to choose from."""
+    gone = people.archived()
+    return {'people': {name: username for name, username in elab.lab_people(lab).values()},
+            'others_by': elab.others_by(),
+            'accounts': sorted((u for u, m in people.memberships().items()
+                                if u not in gone and any((l.get('lab') or '').casefold() == lab.casefold() for l in m['labs'])),
+                               key=str.casefold)}
+
+
+@api.get('/elab/people')
+@signed_in
+def elab_people(person):
+    return jsonify(_lab_people(_elab_admin_lab(person)))
+
+
+@api.put('/elab/people')
+@signed_in
+def elab_set_people(person):
+    """
+    Chooses the lab's own people in eLab ({owner in eLab: their account here, or ''}): what they own there is
+    credited to them, the rest to the administrator, each keeping its owner. Credited again at once.
+    """
+    lab = _elab_admin_lab(person)
+    chosen = _body().get('people')
+    if not isinstance(chosen, dict):
+        raise ValueError('Give the lab\'s people in eLab')
+    known = set(_lab_people(lab)['accounts'])
+    wrong = sorted({str(u) for u in chosen.values() if u and str(u) not in known})
+    if wrong:
+        raise ValueError(f'Not an account in {lab}: {", ".join(wrong)}')
+    elab.set_lab_people(lab, person.username, chosen)
+    with connect() as conn:         # the kinds anything was brought over of, for the lab
+        kinds = [k for k in elab.TABLES if conn.execute(
+            f'SELECT 1 FROM elab_links l JOIN {elab.TABLES[k]} t ON t.id = l.record_id WHERE l.record_kind = ? '
+            'AND l.elab_name IS NOT NULL AND t.lab = ? LIMIT 1', (k, lab)).fetchone()]
+    credited = sum(elab.owners_as_makers(lab, kind, refresh=True) for kind in kinds) if elab.connection(lab) else 0
+    return jsonify({**_lab_people(lab), 'credited': credited})
 
 
 @api.post('/elab/import/material')

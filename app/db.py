@@ -17,6 +17,8 @@ Lab Stocks' database: glycerol stocks, primers, chemicals and antibodies, each l
     attachments, changes, counters, lab_codes   as in the Seed Bank
     elab_settings, elab_links   where a lab's stocks are copied in eLabJournal, and
                what each record last sent there
+    elab_people  the lab's own people among eLab's owners, to credit what is
+               brought over (the rest goes to the administrator)
 
 Codes start with the lab's code: GL-G-0042 a glycerol stock, GL-O-0007 a primer,
 GL-C-0003 a chemical, GL-A-0005 an antibody, GL-M-0001 plant material.
@@ -229,6 +231,19 @@ CREATE TABLE IF NOT EXISTS elab_links (
     PRIMARY KEY (record_kind, record_id)
 );
 
+-- The lab's own people in eLab, chosen by its lab admin: the eLab owners whose
+-- samples brought over are credited to them (to their account here, when one
+-- is given). Once any are chosen, the rest are credited to the installation's
+-- administrator, their owner in eLab kept with each (elab_owner).
+CREATE TABLE IF NOT EXISTS elab_people (
+    lab TEXT NOT NULL COLLATE NOCASE,
+    elab_name TEXT NOT NULL COLLATE NOCASE,
+    username TEXT NOT NULL DEFAULT '',
+    set_by TEXT,
+    set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (lab, elab_name)
+);
+
 CREATE TABLE IF NOT EXISTS lab_codes (
     lab TEXT PRIMARY KEY,
     code TEXT UNIQUE NOT NULL,
@@ -243,7 +258,9 @@ CREATE TABLE IF NOT EXISTS lab_codes (
 GLYCEROL_ADDED = ['permit', 'biosafety', 'host_system', 'plant_markers', 'yeast_markers', 'inserts', 'gene_ids',
                   'donor', 'harmful', 'harmful_notes',
                   # where it is kept in eLab's storage: the compartment, its path then, and the place in a box
-                  'elab_layer_id', 'elab_layer_path', 'elab_position']
+                  'elab_layer_id', 'elab_layer_path', 'elab_position',
+                  # brought over from eLab: its owner there
+                  'elab_owner']
 
 
 # A primer's 5' and 3' modifications, as ordered: added to databases from before them.
@@ -251,7 +268,7 @@ PRIMER_ADDED = ['mod5', 'mod3']
 
 # Where a tube of plant material came from: 'elab' for one brought over from eLab (never made there
 # again), else ''. Added to databases from before it.
-MATERIAL_ADDED = ['source']
+MATERIAL_ADDED = ['source', 'elab_owner']
 
 
 def set_path(path: str) -> None:

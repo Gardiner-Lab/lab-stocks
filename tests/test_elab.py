@@ -657,6 +657,45 @@ def test_bringing_over_elabs_glycerol_stocks(as_user, world, fake, monkeypatch):
                             (g['id'],)).fetchone() == ('eLab', 'made by Sam Postdoc, as its owner in eLab')
 
 
+def test_the_labs_own_people_in_elab_and_the_rest_credited_to_the_administrator(as_user, world, fake, monkeypatch):
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    gs = _type(fake, 'Glycerol Stock')
+    for n, owner in ((601, 'Lab Lead'), (602, 'Robin Colleague'), (603, 'Other Group')):
+        fake.samples[n] = {'sampleTypeID': gs, 'name': f'p{n}', 'altID': '', 'archived': False, 'owner': owner,
+                           'description': '', 'note': '', 'storageLayerID': None, 'position': None, 'meta': {}}
+    fake.samples[603].update(storageLayerID=12, position=-1)      # eLab's -1: in the compartment, no place in it
+    _ok(lead.post('/api/elab/import/glycerol', json={'ids': [601]}), 201)
+    found = _ok(lead.get('/api/elab/import?kind=glycerol'))
+    assert found['people'] == {} and found['others_by'] == 'admin' and 'lead' in found['accounts']
+    # Only the lab admin chooses them, and only accounts of the lab.
+    assert as_user('ana').put('/api/elab/people', json={'people': {'Lab Lead': 'lead'}}).status_code == 403
+    assert lead.put('/api/elab/people', json={'people': {'Lab Lead': 'nobody'}}).status_code == 400
+    res = _ok(lead.put('/api/elab/people', json={'people': {'Lab Lead': 'lead', 'Robin Colleague': ''}}))
+    assert res['people'] == {'Lab Lead': 'lead', 'Robin Colleague': ''} and res['credited'] == 1
+    _ok(lead.post('/api/elab/import/glycerol', json={'ids': [602, 603]}), 201)
+    got = {r['plasmid_name']: r for r in _ok(lead.get('/api/glycerol'))['glycerol']}
+    # The lab's own: to their account here, else their name in eLab; anyone else's to the administrator.
+    assert [(got[f'p{n}']['created_by'], got[f'p{n}']['elab_owner']) for n in (601, 602, 603)] == [
+        ('lead', 'Lab Lead'), ('Robin Colleague', 'Robin Colleague'), ('admin', 'Other Group')]
+    assert (got['p603']['elab_layer_id'], got['p603']['elab_position']) == ('12', '')
+    with sqlite3.connect(world['paths']['stocks']) as conn:
+        assert conn.execute("SELECT what FROM changes WHERE record_id = ? ORDER BY rowid DESC",
+                            (got['p601']['id'],)).fetchone() == ('credited to lead; made by Lab Lead, its owner in eLab',)
+    # And kept so by the hourly look at eLab's owners; one changing hands there follows.
+    fake.samples[603]['owner'] = 'Lab Lead'
+    assert elab.owners_as_makers('Gardiner Lab', 'glycerol', refresh=True) == 1
+    got = {r['plasmid_name']: r for r in _ok(lead.get('/api/glycerol'))['glycerol']}
+    assert (got['p603']['created_by'], got['p603']['elab_owner']) == ('lead', 'Lab Lead')
+    assert got['p602']['created_by'] == 'Robin Colleague'
+    # None chosen: each to its owner in eLab again.
+    _ok(lead.put('/api/elab/people', json={'people': {}}))
+    got = {r['plasmid_name']: r for r in _ok(lead.get('/api/glycerol'))['glycerol']}
+    assert [got[f'p{n}']['created_by'] for n in (601, 602, 603)] == ['Lab Lead', 'Robin Colleague', 'Lab Lead']
+
+
 def test_a_records_page_links_to_its_elab_sample_and_sends_again(as_user, world, fake, monkeypatch):
     monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
     monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)

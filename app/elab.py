@@ -28,6 +28,13 @@ elab_settings. Without it, a lab follows the settings below, when set:
     ELAB_SAMPLE_TYPES   other sample type names, e.g. seed=Seeds
     ELAB_INTERVAL       seconds between rounds (default 120)
     ELAB_HOSTS          the hosts a lab may connect to (default elabjournal.com,elabnext.com and their subdomains)
+    ELAB_OTHERS_BY      who is credited with samples brought over from people outside the lab (default admin)
+
+What is brought over from eLab is made by its owner there. A shared group holds
+other labs' samples too: once the lab admin has chosen the lab's own people
+among eLab's owners (elab_people), theirs are credited to them, to their account
+here when one is given, and everyone else's to ELAB_OTHERS_BY; each keeps its
+owner in eLab (elab_owner) either way.
 
 A glycerol stock can be kept in one of the group's storage locations in eLab
 (a compartment of a storage unit: a freezer's tower, a box, a place in a box),
@@ -855,7 +862,8 @@ def candidates(lab: str, kind: str, refresh: bool = False, opener=None, every: b
                             'note': (s.get('note') or '').strip(), 'description': (s.get('description') or '').strip(),
                             'species': meta.get('Species', ''), 'created': (s.get('created') or '')[:10],
                             'strain': meta.get('Name of host strain', ''), 'selection': meta.get('Bacterial Markers', ''),
-                            'layer': s.get('storageLayerID') or None, 'position': s.get('position') or None,
+                            # eLab says -1 for no place in the compartment
+                            'layer': s.get('storageLayerID') or None, 'position': s.get('position') if (s.get('position') or 0) > 0 else None,
                             'path': paths.get(s.get('storageLayerID'), ''), 'meta': meta})
         _found[key] = (time.time(), samples)
     linked = _linked_samples()
@@ -992,19 +1000,66 @@ def unlinked(lab: str, kind: str) -> Dict[Tuple[str, Optional[int], Optional[int
     return out
 
 
+def others_by() -> str:
+    """Who is credited with what is brought over from someone outside the lab."""
+    return os.environ.get('ELAB_OTHERS_BY', '').strip() or 'admin'
+
+
+def lab_people(lab: str, conn=None) -> Dict[str, Tuple[str, str]]:
+    """The lab's own people in eLab: owner (casefolded) -> (owner as eLab has it, their account here or '')."""
+    with contextlib.ExitStack() as stack:
+        conn = conn or stack.enter_context(connect())
+        return {r['elab_name'].casefold(): (r['elab_name'], r['username'])
+                for r in conn.execute('SELECT elab_name, username FROM elab_people WHERE lab = ? COLLATE NOCASE', (lab,))}
+
+
+def set_lab_people(lab: str, by: str, people: Dict[str, str]) -> Dict[str, Tuple[str, str]]:
+    """Chooses the lab's own people in eLab: {owner in eLab: their account here, or ''}; none, as before."""
+    with connect() as conn:
+        conn.execute('DELETE FROM elab_people WHERE lab = ? COLLATE NOCASE', (lab,))
+        for name, username in people.items():
+            name, username = str(name or '').strip()[:200], str(username or '').strip()[:200]
+            if name:
+                conn.execute('INSERT OR REPLACE INTO elab_people (lab, elab_name, username, set_by) VALUES (?, ?, ?, ?)',
+                             (lab, name, username, by))
+    for kind in TABLES:
+        _owners_at.pop(f'{lab.casefold()}|{kind}', None)    # credited again at the next round
+    return lab_people(lab)
+
+
+def maker(lab: str, owner: Optional[str], conn=None) -> str:
+    """
+    Who is credited with a sample brought over from eLab, of this owner there: the owner, until the lab's own
+    people are chosen; then one of them (their account here, when given), else ELAB_OTHERS_BY.
+    """
+    owner = (owner or '').strip()
+    people = lab_people(lab, conn)
+    if not people:
+        return owner
+    name, username = people.get(owner.casefold(), ('', ''))
+    return (username or name) if name else others_by()
+
+
 def set_maker(conn, kind: str, record_id: str, owner: Optional[str]) -> bool:
     """
-    One brought over from eLab is made by its sample's owner there: so set when it is not (who brought it
-    over, or the owner changed in eLab since), in its history too. Gives whether it changed.
+    One brought over from eLab is made by its sample's owner there (or, the lab's own people chosen, by whom
+    maker says), its owner kept: so set when it is not (who brought it over, or the owner changed in eLab
+    since), in its history too. Gives whether it changed.
     """
     owner = (owner or '').strip()
     if kind not in TABLES or not owner:
         return False
-    if not conn.execute(f'UPDATE {TABLES[kind]} SET created_by = ? WHERE id = ? AND created_by IS NOT ?',
-                        (owner, record_id, owner)).rowcount:
+    row = conn.execute(f'SELECT lab FROM {TABLES[kind]} WHERE id = ?', (record_id,)).fetchone()
+    if row is None:
+        return False
+    by = maker(row['lab'], owner, conn)
+    if not conn.execute(f'UPDATE {TABLES[kind]} SET created_by = ?, elab_owner = ? WHERE id = ? '
+                        'AND (created_by IS NOT ? OR elab_owner IS NOT ?)',
+                        (by, owner, record_id, by, owner)).rowcount:
         return False
     conn.execute('INSERT INTO changes (record_kind, record_id, changed_by, what) VALUES (?, ?, ?, ?)',
-                 (kind, record_id, 'eLab', f'made by {owner}, as its owner in eLab'))
+                 (kind, record_id, 'eLab', f'made by {owner}, as its owner in eLab' if by == owner
+                  else f'credited to {by}; made by {owner}, its owner in eLab'))
     return True
 
 

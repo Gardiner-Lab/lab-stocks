@@ -5,6 +5,25 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Bringing over many glycerol stocks or tubes from eLab at once could stop part way (the server gives a
+  request two minutes), leaving them made here but not linked to their samples. Each round then tried to
+  make them in eLab, which said "There is no free space at position … in storage layer #…". Now:
+  - they are brought over 25 at a time, each batch linked as it is made;
+  - a round finding a stock's place in eLab taken by an unlinked sample of its name links it to that
+    sample instead of making it (so those left unlinked mend themselves at the next round);
+  - bringing over again links what a stopped bringing over left, rather than making it twice;
+  - one brought over is marked so, and is never made in eLab: linked again to its sample if its link is
+    lost.
+
+### Changed
+- What is brought over from eLab is made by its owner in eLab, not by who brought it over (the history
+  still says who did). eLab is right: the owners are looked up every hour, and on opening Bring over,
+  and corrected here when they differ, in the history too. Those made here and sent to eLab keep their maker.
+
+### Added
+- Bringing over from eLab shows a progress bar: how many samples are done of how many.
+
 ## [0.7.0] - 2026-10-24
 
 ### Added

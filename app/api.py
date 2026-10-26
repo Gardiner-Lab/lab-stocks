@@ -179,6 +179,7 @@ def elab_import_list(person):
     """
     lab = _elab_admin_lab(person)
     found = elab.candidates(lab, request.args.get('kind', ''), refresh=request.args.get('refresh') == '1', every=True)
+    elab.owners_as_makers(lab, request.args.get('kind', ''))      # as eLab has them now: from the list just fetched
     owners: dict = {}
     for s in found:
         counts = owners.setdefault(s['owner'], [0, 0])
@@ -197,6 +198,8 @@ def elab_import_material(person):
     if not chosen:
         raise ValueError('Choose the samples to bring over')
     tissues = ('leaf', 'flower', 'petal', 'root', 'stem', 'seedling', 'seed', 'fruit', 'callus', 'whole plant')
+    elab.owners_as_makers(lab, 'material')
+    healed, chosen = _here_already(lab, 'material', chosen)
     items = []
     for s in chosen:
         said = f"{s['description']} {s['note']}".lower()
@@ -206,12 +209,36 @@ def elab_import_material(person):
                       'collected_by': by.group(1).strip() if by else '',
                       'notes': s['note'], 'elab_layer_id': str(s['layer'] or ''), 'elab_layer_path': s['path'],
                       'elab_position': str(s['position'] or '')})
-    made = []
-    with elab.paused():         # made and linked before any round can send them as new
-        for start in range(0, len(items), records.MANY):
-            made += records.create_material(person, items[start:start + records.MANY], {}, lab)
-        linked = elab.adopt(lab, 'material', [(rid, s['id'], s['name']) for rid, s in zip(made, chosen)])
+    made, linked = [], 0
+    with elab.paused():         # made and linked a few at a time, before any round can send them as new
+        linked += elab.adopt(lab, 'material', healed)
+        for start in range(0, len(items), BATCH):
+            some = records.create_material(person, items[start:start + BATCH], {}, lab,
+                                           owners=[s['owner'] for s in chosen[start:start + BATCH]])
+            linked += elab.adopt(lab, 'material', [(rid, s['id'], s['name']) for rid, s in zip(some, chosen[start:start + BATCH])])
+            made += some
     return jsonify({'made': len(made), 'linked': linked}), 201
+
+
+BATCH = 25      # brought over from eLab and linked at once: few enough that a stop between leaves little unlinked
+
+
+def _here_already(lab: str, kind: str, chosen: list):
+    """
+    Of the samples chosen to bring over, those already here unlinked (an earlier bringing over stopped before
+    linking them): [(record id, sample id, name)], to link, made by the sample's owner; and the rest, to make.
+    """
+    waiting = elab.unlinked(lab, kind)
+    healed, rest = [], []
+    for s in chosen:
+        record_id = waiting.pop(elab.place_of(s), None)
+        if record_id:
+            healed.append((record_id, s['id'], s['name']))
+            with connect() as conn:
+                elab.set_maker(conn, kind, record_id, s['owner'])
+        else:
+            rest.append(s)
+    return healed, rest
 
 
 def _choice(value, allowed) -> str:
@@ -233,6 +260,8 @@ def elab_import_glycerol(person):
     chosen = [s for s in elab.candidates(lab, 'glycerol') if s['id'] in wanted]
     if not chosen:
         raise ValueError('Choose the samples to bring over')
+    elab.owners_as_makers(lab, 'glycerol')
+    healed, chosen = _here_already(lab, 'glycerol', chosen)
     data = []
     for s in chosen:
         meta = s['meta']
@@ -250,9 +279,14 @@ def elab_import_glycerol(person):
             'harmful_notes': harm, 'made_on': s['created'] or None,
             'notes': '\n'.join(filter(None, [meta.get('Remarks', ''), s['description'], s['note']])),
             'elab_layer_id': str(s['layer'] or ''), 'elab_layer_path': s['path'], 'elab_position': str(s['position'] or '')})
-    with elab.paused():         # made and linked before any round can send them as new
-        made = [records.create(person, 'glycerol', d) for d in data]
-        linked = elab.adopt(lab, 'glycerol', [(rid, s['id'], s['name']) for rid, s in zip(made, chosen)])
+    made, linked = [], 0
+    with elab.paused():         # made and linked a few at a time, before any round can send them as new
+        linked += elab.adopt(lab, 'glycerol', healed)
+        for start in range(0, len(data), BATCH):
+            some = [records.create(person, 'glycerol', d, owner=s['owner'])
+                    for d, s in zip(data[start:start + BATCH], chosen[start:start + BATCH])]
+            linked += elab.adopt(lab, 'glycerol', [(rid, s['id'], s['name']) for rid, s in zip(some, chosen[start:start + BATCH])])
+            made += some
     return jsonify({'made': len(made), 'linked': linked,
                     'plasmids': sum(1 for d in data if d['plasmid_id'])}), 201
 

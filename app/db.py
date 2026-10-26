@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS material (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP
+    -- and MATERIAL_ADDED, below
 );
 CREATE INDEX IF NOT EXISTS idx_material_name ON material(name);
 
@@ -248,6 +249,10 @@ GLYCEROL_ADDED = ['permit', 'biosafety', 'host_system', 'plant_markers', 'yeast_
 # A primer's 5' and 3' modifications, as ordered: added to databases from before them.
 PRIMER_ADDED = ['mod5', 'mod3']
 
+# Where a tube of plant material came from: 'elab' for one brought over from eLab (never made there
+# again), else ''. Added to databases from before it.
+MATERIAL_ADDED = ['source']
+
 
 def set_path(path: str) -> None:
     global _path
@@ -302,3 +307,7 @@ def initialize(db_path: Optional[str] = None) -> None:
         for column in GLYCEROL_ADDED:
             if column not in have:
                 conn.execute(f"ALTER TABLE glycerol ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        have = {r['name'] for r in conn.execute('PRAGMA table_info(material)')}
+        for column in MATERIAL_ADDED:
+            if column not in have:
+                conn.execute(f"ALTER TABLE material ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")

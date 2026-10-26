@@ -499,10 +499,12 @@ FIELDS = {'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _c
 MANY = 500                  # plant material made at once, at most: a few boxes of tubes
 
 
-def create_material(person: Person, items: List[dict], shared: dict, lab: Optional[str] = None) -> List[str]:
+def create_material(person: Person, items: List[dict], shared: dict, lab: Optional[str] = None,
+                    owners: Optional[List[str]] = None) -> List[str]:
     """
     Several tubes of plant material at once (a box of them): each item its own name and fields, the
-    shared fields for all. Gives their ids, in order. All or none are made.
+    shared fields for all. Gives their ids, in order. All or none are made. owners: brought over from
+    eLab, each tube's owner there, who made it (the history says who brought it over).
     """
     items = [i for i in (items or []) if isinstance(i, dict)]
     if not items:
@@ -513,36 +515,44 @@ def create_material(person: Person, items: List[dict], shared: dict, lab: Option
     rows = [_material_fields({**(shared or {}), **i}, partial=False) for i in items]
     made = []
     with connect() as conn:
-        for fields in rows:
+        for n, fields in enumerate(rows):
             record_id = secrets.token_hex(12)
             code = _code(conn, 'material', lab)
+            if owners is not None:
+                fields = {**fields, 'source': 'elab'}
             cols = ['id', 'code', 'lab', 'created_by', *fields]
             conn.execute(f'INSERT INTO material ({", ".join(cols)}) VALUES ({", ".join("?" * len(cols))})',
-                         (record_id, code, lab, person.username, *fields.values()))
-            _log(conn, 'material', record_id, person.username, f'created {code}' + (' (one of several)' if len(rows) > 1 else ''))
+                         (record_id, code, lab, (owners[n] if owners is not None else '') or person.username, *fields.values()))
+            _log(conn, 'material', record_id, person.username, f'created {code}' + (
+                ' (brought over from eLab)' if owners is not None else ' (one of several)' if len(rows) > 1 else ''))
             made.append(record_id)
     elab.nudge()
     return made
 
 
-def create(person: Person, kind: str, data: dict) -> str:
-    return create_noting(person, kind, data)[0]
+def create(person: Person, kind: str, data: dict, owner: Optional[str] = None) -> str:
+    return create_noting(person, kind, data, owner)[0]
 
 
-def create_noting(person: Person, kind: str, data: dict):
-    """Makes a record; gives its id, and what it did to the order list (a chemical made out), or None."""
+def create_noting(person: Person, kind: str, data: dict, owner: Optional[str] = None):
+    """
+    Makes a record; gives its id, and what it did to the order list (a chemical made out), or None.
+    owner: a glycerol stock brought over from eLab, its owner there, who made it (the history says who
+    brought it over).
+    """
     fields = FIELDS[kind](data, partial=False)
     if kind == 'glycerol':
-        fields['source'] = 'sequencing' if data.get('source') == 'sequencing' else 'manual'
+        fields['source'] = 'elab' if owner is not None else 'sequencing' if data.get('source') == 'sequencing' else 'manual'
     lab = lab_of(person, data.get('lab'), strict=True)
     with connect() as conn:
         record_id = secrets.token_hex(12)
         code = _code(conn, kind, lab)
         cols = ['id', 'code', 'lab', 'created_by', *fields]
         conn.execute(f'INSERT INTO {TABLE[kind]} ({", ".join(cols)}) VALUES ({", ".join("?" * len(cols))})',
-                     (record_id, code, lab, person.username, *fields.values()))
+                     (record_id, code, lab, owner or person.username, *fields.values()))
         _log(conn, kind, record_id, person.username,
-             f'created {code}' + (' on confirming the plasmid by sequencing' if fields.get('source') == 'sequencing' else ''))
+             f'created {code}' + {'sequencing': ' on confirming the plasmid by sequencing',
+                                  'elab': ' (brought over from eLab)'}.get(fields.get('source'), ''))
         ordered = None
         if kind == 'chemical' and fields['status'] == 'out':
             from app import orders

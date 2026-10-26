@@ -286,6 +286,7 @@ class Item:
     storage: Optional[Dict[str, Optional[int]]] = None     # {'storageLayerID', 'position'}: where it is kept in eLab
     props: Dict[str, str] = field(default_factory=dict)    # the sample's own description and note
     from_elab: Optional[str] = None     # brought over from eLab: the sample's name there (it is never made there)
+    called: str = ''                    # its own name here (the plasmid, the tube), to know its sample in eLab by
 
 
 # --- the group's storage in eLab ---------------------------------------------------
@@ -435,7 +436,8 @@ def _glycerol(lab: str, defaults: Dict[str, str]) -> List[Item]:
                                            f"Kept in: {r['location']}" if r['location'] else '',
                                            f"Made on: {r['made_on']}" if r['made_on'] else '',
                                            r['notes'], f"Lab Stocks: {r['code']}")},
-                        gone, storage))
+                        gone, storage, from_elab=r['plasmid_name'] if r['source'] == 'elab' else None,
+                        called=r['plasmid_name']))
     return out
 
 
@@ -461,7 +463,8 @@ def _material(lab: str, defaults: Dict[str, str]) -> List[Item]:
                       f"Experiment: {r['experiment']}" if r['experiment'] else '', f"Kept in: {r['location']}" if r['location'] else '',
                       r['notes'], f"Lab Stocks: {r['code']}")
         out.append(Item('material', r['id'], r['code'], lab, r['name'], dict(defaults), gone, _storage(r),
-                        {'description': description, 'note': note}))
+                        {'description': description, 'note': note},
+                        from_elab=r['name'] if r['source'] == 'elab' else None, called=r['name']))
     return out
 
 
@@ -585,25 +588,41 @@ def _linked_samples() -> Dict[int, str]:
             'SELECT sample_id, record_id FROM elab_links WHERE sample_id IS NOT NULL AND archived != 1')}
 
 
-def _adopt_found(client: Client, st: SampleType, item: Item, c: Connection) -> dict:
+def _at(sample: dict, storage: Dict[str, Optional[int]]) -> bool:
+    """Whether eLab keeps this sample in that place: the compartment, and the place in it when there is one."""
+    return (int(sample.get('storageLayerID') or 0) == storage['storageLayerID']
+            and (storage['position'] is None or int(sample.get('position') or 0) == storage['position']))
+
+
+def _adopt_found(client: Client, st: SampleType, item: Item, c: Connection, name: Optional[str] = None,
+                 place: bool = False) -> dict:
     """
-    A seed lot brought over from eLab, not linked yet (its link was not made, say): linked now to the
-    sample of its name there, never made a second time. None such, or more than one: not sent at all.
+    One brought over from eLab, not linked yet (its link was not made, say): linked now to the sample of
+    its name there, never made a second time; of several of that name, the one in its place. None such,
+    or more than one: not sent at all. place: only the one in its place. A glycerol stock or tube is then
+    made by the sample's owner.
     """
-    name = item.from_elab
-    found = _items(client.call('GET', '/samples', query={'sampleTypeID': st.id, 'name': name, '$records': 5}))
+    name = name or item.from_elab
+    found = _items(client.call('GET', '/samples', query={'sampleTypeID': st.id, 'name': name, '$records': 50}))
     linked = _linked_samples()
     same = [f for f in found if (f.get('name') or '').strip() == name and not f.get('archived')
             and int(f['sampleID']) not in linked]
+    if item.storage and (place or len(same) > 1):
+        same = [f for f in same if _at(f, item.storage)]
     if len(same) != 1:
         raise ElabError(0, f"Brought over from eLab as {name}, which eLab has {'twice' if same else 'no more (or it is linked already)'}: "
                            'not sent, so as not to make it twice')
+    if item.kind in TABLES:
+        with connect() as conn:
+            set_maker(conn, item.kind, item.id, same[0].get('owner'))
     item.name = name
     sent = {'name': name, 'values': {m['key']: m['value'] for m in _metas(st, item.values)},
             'storage': item.storage, 'props': item.props}
     return {'sample_id': int(same[0]['sampleID']), 'archived': 0, 'sent': json.dumps(sent), 'elab_name': name,
             'synced': fingerprint(item, c)}
 
+
+TABLES = {'glycerol': 'glycerol', 'material': 'material'}     # the kinds kept here (seed lots are the Seed Bank's)
 
 HELD = 2         # elab_links.archived: archived in eLab, not here; sent no more, and not made again
 
@@ -713,6 +732,9 @@ def run_once(opener=None) -> dict:
                 try:
                     s, f = _run_lab(lab, c, Client(c.url, c.token, opener))
                     sent, failed = sent + s, failed + f
+                    for kind in c.kinds:
+                        if kind in TABLES and time.time() - _owners_at.get(f'{lab.casefold()}|{kind}', 0) >= OWNERS_EVERY:
+                            owners_as_makers(lab, kind, refresh=True, opener=opener)
                     _state['errors'].pop(lab, None)
                 except ElabError as exc:
                     _state['errors'][lab] = ('eLab no longer accepts the token: connect again with a new one. '
@@ -752,11 +774,25 @@ def _run_lab(lab: str, c: Connection, client: Client) -> Tuple[int, int]:
         st = sample_type(client, c.type_name(kind))
         for item, link, fp in todo:
             try:
-                if not link and item.from_elab:
+                if item.from_elab and not (link and link['sample_id']):
                     _keep(kind, item.id, None, elab_url=c.url, error=None, tried=fp, tried_at=now,
                           synced_at=time.strftime('%Y-%m-%d %H:%M:%S'), **_adopt_found(client, st, item, c))
                     continue
-                kept = push(client, st, item, link)
+                try:
+                    kept = push(client, st, item, link)
+                except ElabError as exc:
+                    # Its place in eLab is taken: by its own sample, when one of its name is there and linked to
+                    # nothing (brought over from eLab, its link not made). Linked to it then, not made twice.
+                    if not (exc.status == 400 and 'no free space' in str(exc).lower() and item.called and item.storage):
+                        raise
+                    try:
+                        found = _adopt_found(client, st, item, c, name=item.called, place=True)
+                    except ElabError:
+                        raise exc
+                    _keep(kind, item.id, None, elab_url=c.url, error=None, tried=fp, tried_at=now,
+                          synced_at=time.strftime('%Y-%m-%d %H:%M:%S'), **found)
+                    sent += 1
+                    continue
             except ElabError as exc:
                 if exc.status == 401:
                     raise
@@ -931,6 +967,67 @@ def adopt(lab: str, kind: str, pairs: List[Tuple[str, int, str]], opener=None) -
     for k in [k for k in _found if k.startswith(f'{lab.casefold()}|')]:
         del _found[k]
     return done
+
+
+def place_of(sample: dict) -> Tuple[str, Optional[int], Optional[int]]:
+    """A sample to bring over, by its name and place in eLab's storage."""
+    return ((sample.get('name') or '').strip().casefold(), int(sample['layer']) if sample.get('layer') else None,
+            int(sample['position']) if sample.get('position') else None)
+
+
+def unlinked(lab: str, kind: str) -> Dict[Tuple[str, Optional[int], Optional[int]], str]:
+    """
+    Glycerol stocks or tubes here in a place in eLab's storage but linked to no sample there (brought over,
+    and their link not made): (their name, compartment, place) -> record id, to be linked, not brought twice.
+    """
+    c = connection(lab)
+    if c is None:
+        return {}
+    links, out = _links(kind), {}
+    for i in items(kind, lab, c):
+        link = links.get(i.id)
+        if i.gone or not i.storage or (link and link['sample_id']):
+            continue
+        out.setdefault((i.called.strip().casefold(), i.storage['storageLayerID'], i.storage['position']), i.id)
+    return out
+
+
+def set_maker(conn, kind: str, record_id: str, owner: Optional[str]) -> bool:
+    """
+    One brought over from eLab is made by its sample's owner there: so set when it is not (who brought it
+    over, or the owner changed in eLab since), in its history too. Gives whether it changed.
+    """
+    owner = (owner or '').strip()
+    if kind not in TABLES or not owner:
+        return False
+    if not conn.execute(f'UPDATE {TABLES[kind]} SET created_by = ? WHERE id = ? AND created_by IS NOT ?',
+                        (owner, record_id, owner)).rowcount:
+        return False
+    conn.execute('INSERT INTO changes (record_kind, record_id, changed_by, what) VALUES (?, ?, ?, ?)',
+                 (kind, record_id, 'eLab', f'made by {owner}, as its owner in eLab'))
+    return True
+
+
+OWNERS_EVERY = 3600             # seconds between looking up, in eLab, the owners of what was brought over
+_owners_at: Dict[str, float] = {}
+
+
+def owners_as_makers(lab: str, kind: str, refresh: bool = False, opener=None) -> int:
+    """
+    Those brought over from eLab: made by their sample's owner there, as eLab has it now; where they differ,
+    eLab is right. Those made here and sent there are left (eLab's owner of those is whose token sends them).
+    """
+    if kind not in TABLES:
+        return 0
+    owner = {s['id']: s['owner'] for s in candidates(lab, kind, refresh=refresh, opener=opener, every=True) if s['here']}
+    fixed = 0
+    with connect() as conn:
+        for r in conn.execute(f'SELECT l.record_id, l.sample_id FROM elab_links l JOIN {TABLES[kind]} t ON t.id = l.record_id '
+                              'WHERE l.record_kind = ? AND l.elab_name IS NOT NULL AND l.sample_id IS NOT NULL '
+                              'AND l.archived = 0 AND t.lab = ?', (kind, lab)).fetchall():
+            fixed += set_maker(conn, kind, r['record_id'], owner.get(r['sample_id']))
+    _owners_at[f'{lab.casefold()}|{kind}'] = time.time()
+    return fixed
 
 
 def seed_lot_ids(codes: List[str]) -> Dict[str, str]:

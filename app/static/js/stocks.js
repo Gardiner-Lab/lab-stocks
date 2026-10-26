@@ -1024,7 +1024,9 @@ const App = {
     const where = el('input', { type: 'search', placeholder: 'Only those kept in… e.g. Tower N, Gardiner Lab' });
     const summary = el('p', {});
     const table = el('div', { class: 'import-preview' });
-    const progress = el('p', { class: 'hint' });
+    const progress = el('div', { class: 'hint' });
+    const bar = (done, total, what) => put(progress, el('div', { class: 'import-progress' },
+      el('progress', { max: total, value: done }), el('span', {}, `${done} of ${total} ${what}`)));
     const ticked = new Set();
     const chosen = () => samples.filter((s) => ticked.has(s.owner) && (!where.value.trim() || s.path.toLowerCase().includes(where.value.trim().toLowerCase())));
     const groups = (list) => {
@@ -1074,21 +1076,28 @@ const App = {
     const run = async () => {
       const list = chosen();
       if (!list.length) throw new Error('Choose whose samples to bring over');
-      if (kind === 'glycerol') {
-        put(progress, `Bringing over ${list.length} glycerol stocks…`);
-        const res = await api('POST', '/elab/import/glycerol', { lab, ids: list.map((s) => s.id) });
-        toast(`Brought over ${res.made} glycerol stocks, linked to eLab${res.plasmids ? `; ${res.plasmids} linked to their plasmid` : ''}`, 'success', 6000);
-      } else if (kind === 'material') {
-        put(progress, `Bringing over ${list.length} tubes…`);
-        const res = await api('POST', '/elab/import/material', { lab, ids: list.map((s) => s.id) });
-        toast(`Brought over ${res.made} tubes of plant material, linked to eLab`, 'success', 6000);
+      if (kind === 'glycerol' || kind === 'material') {
+        // A few at a time, for the bar to move; what is brought over stays, should a later batch fail.
+        const what = kind === 'glycerol' ? 'glycerol stocks' : 'tubes';
+        const sum = { made: 0, plasmids: 0 };
+        bar(0, list.length, what);
+        for (let start = 0; start < list.length; start += 25) {
+          const res = await api('POST', `/elab/import/${kind}`, { lab, ids: list.slice(start, start + 25).map((s) => s.id) });
+          sum.made += res.linked;          // made here, or already here from a bringing over that stopped
+          sum.plasmids += res.plasmids || 0;
+          bar(Math.min(start + 25, list.length), list.length, what);
+        }
+        toast(kind === 'glycerol'
+          ? `Brought over ${sum.made} glycerol stocks, linked to eLab${sum.plasmids ? `; ${sum.plasmids} linked to their plasmid` : ''}`
+          : `Brought over ${sum.made} tubes of plant material, linked to eLab`, 'success', 6000);
       } else {
         const existing = new Map((await seedsApi('GET', '/lines')).lines.filter((l) => l.lab === lab).map((l) => [l.name, l]));
         let lots = 0;
         let n = 0;
+        let started = 0;
+        bar(0, list.length, 'seed samples');
         for (const [name, members] of groups(list)) {
           n += 1;
-          put(progress, `Line ${n} of ${groups(list).size}: ${name}`);
           let line = existing.get(name);
           if (!line) {
             line = (await seedsApi('POST', '/lines', { name, lab, species: members[0].species || '',
@@ -1100,6 +1109,7 @@ const App = {
             const lot = (await seedsApi('POST', '/lots', { line: line.code, source: `eLab ${s.name}`, location: s.path,
               notes: [s.description, s.note !== name ? s.note : ''].filter(Boolean).join('\n') })).record;
             pairs.push({ code: lot.code, sample_id: s.id, name: s.name });
+            bar(++started, list.length, `seed samples · line ${n} of ${groups(list).size}`);
           }
           lots += (await api('POST', '/elab/adopt', { lab, pairs })).linked;
         }
@@ -1113,7 +1123,12 @@ const App = {
       el('option', { value: 'seed' }, 'Seed samples → the Seed Bank'));
     const go = el('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
       go.disabled = true;
-      try { await run(); } catch (e) { toast(e.message, 'error', 8000); put(progress); } finally { go.disabled = false; }
+      try { await run(); } catch (e) {
+        // What came over before it stopped is here: the list shows what is left.
+        toast(e.message, 'error', 8000);
+        put(progress);
+        load(true).catch((err) => put(summary, err.message));
+      } finally { go.disabled = false; }
     } }, 'Bring them over');
     modal({ title: 'Bring over from eLabJournal', wide: true, onClose: done, buttons: [{ label: 'Close', kind: 'secondary' }],
       build: (body) => body.append(

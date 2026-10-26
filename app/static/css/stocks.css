@@ -60,6 +60,9 @@ a { color: var(--primary); }
 .import-owners .chip { cursor: pointer; }
 .import-owners .chip-done { cursor: default; }
 .import-preview { max-height: 18rem; overflow: auto; }
+.import-progress { display: flex; align-items: center; gap: .6rem; margin: .5rem 0; }
+.import-progress progress { flex: 1; height: .7rem; accent-color: var(--accent); }
+.import-progress span { white-space: nowrap; }
 .elab-nav { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
 .list-search { font: inherit; width: 100%; padding: .55rem .75rem; border: 1px solid var(--border); border-radius: .45rem; margin: .4rem 0 .8rem; }
 

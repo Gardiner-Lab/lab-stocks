@@ -123,6 +123,11 @@ class FakeElab:
             if body.get('altID') and any(s['altID'] == body['altID'] for s in self.samples.values()):
                 raise urllib.error.HTTPError('', 409, 'Conflict', {}, io.BytesIO(
                     json.dumps({'message': f"A sample with barcode '{body['altID']}' already exists."}).encode()))
+            # As eLab does: one sample to a place in a box.
+            if body.get('position') and any(x['storageLayerID'] == body.get('storageLayerID') and x['position'] == body['position']
+                                             and not x['archived'] for x in self.samples.values()):
+                raise urllib.error.HTTPError('', 400, 'Bad Request', {}, io.BytesIO(json.dumps({'message': (
+                    f"There is no free space at position {body['position']} in storage layer #{body['storageLayerID']}")}).encode()))
             self._options(body['sampleTypeID'], body['sampleMetas'])
             i = self._id()
             self.samples[i] = {'sampleTypeID': body['sampleTypeID'], 'name': body['name'], 'altID': body.get('altID', ''),
@@ -203,6 +208,9 @@ def fake(monkeypatch):
     monkeypatch.setenv('ELAB_URL', 'https://uu.elabjournal.com')
     monkeypatch.setenv('ELAB_TOKEN', 'secret')
     monkeypatch.setenv('ELAB_THREAD', '0')
+    # What another test's eLab had is not remembered.
+    for cache in ('_found', '_places', '_owners_at'):
+        monkeypatch.setattr(elab, cache, {})
     return FakeElab()
 
 
@@ -498,6 +506,23 @@ def test_bringing_over_elabs_plant_material_and_seed_samples(as_user, world, fak
     assert fake.samples[201]['name'] == 'sLAB0000001'
 
 
+def test_bringing_over_in_batches_makes_each_once(as_user, world, fake, monkeypatch):
+    # The page sends a few at a time, for its progress bar; sent again, one already here is not made twice.
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    pm = _type(fake, 'Plant Material')
+    for n in range(1, 6):
+        fake.samples[300 + n] = {'sampleTypeID': pm, 'name': f'Tube {n}', 'altID': '', 'archived': False, 'meta': {},
+                                 'owner': 'Pat Student', 'description': '', 'note': '', 'storageLayerID': None, 'position': None}
+    assert len(_ok(lead.get('/api/elab/import?kind=material'))['samples']) == 5
+    assert _ok(lead.post('/api/elab/import/material', json={'ids': [301, 302, 303]}), 201)['made'] == 3
+    assert _ok(lead.post('/api/elab/import/material', json={'ids': [303, 304, 305]}), 201)['made'] == 2
+    assert sorted(t['name'] for t in _ok(lead.get('/api/material'))['material']) == [f'Tube {n}' for n in range(1, 6)]
+    assert _ok(lead.get('/api/elab/import?kind=material'))['samples'] == []
+
+
 def test_archived_in_elab_is_left_so_and_others_samples_fail_alone(as_user, world, fake, monkeypatch):
     monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
     ana = as_user('ana')
@@ -608,6 +633,8 @@ def test_bringing_over_elabs_glycerol_stocks(as_user, world, fake, monkeypatch):
     assert g['gene_ids'] == 'AT1G01060' and g['harmful_notes'] == 'none' and 'GFP fusion' in g['notes']
     assert (g['elab_layer_id'], g['elab_position'], g['elab_layer_path']) == ('12', '4', 'Freezer 1 / Tower 2 / Box 5')
     assert got['gNP038']['host_system'] == 'other' and got['gNP038']['plasmid_id'] in (None, '')
+    # Made by their owner in eLab, not by who brought them over.
+    assert g['created_by'] == 'Robin Colleague' and got['gNP038']['created_by'] == 'Robin Colleague'
     # Linked, keeping their names in eLab; nothing changed there; not offered again.
     fake.calls.clear()
     assert _run(fake) == {'sent': 0, 'failed': 0}
@@ -617,6 +644,17 @@ def test_bringing_over_elabs_glycerol_stocks(as_user, world, fake, monkeypatch):
     _ok(lead.put(f"/api/glycerol/{g['code']}", json={'clone': '2'}))
     _run(fake)
     assert fake.samples[501]['name'] == 'pGreen-35S-GFP' and 'Clone: 2' in fake.samples[501]['meta']['Remarks']
+    # Its owner changed in eLab: eLab is right, and the history says so. One made here and sent keeps its maker.
+    mine = _ok(lead.post('/api/glycerol', json={'plasmid_name': 'pMine', 'lab': 'Gardiner Lab'}), 201)
+    _run(fake)
+    fake.samples[501]['owner'] = 'Sam Postdoc'
+    _ok(lead.get('/api/elab/import?kind=glycerol&refresh=1'))
+    got = {r['plasmid_name']: r for r in _ok(lead.get('/api/glycerol'))['glycerol']}
+    assert got['pGreen-35S-GFP']['created_by'] == 'Sam Postdoc' and got['gNP038']['created_by'] == 'Robin Colleague'
+    assert got['pMine']['created_by'] == 'lead'
+    with sqlite3.connect(world['paths']['stocks']) as conn:
+        assert conn.execute("SELECT changed_by, what FROM changes WHERE record_id = ? ORDER BY rowid DESC",
+                            (g['id'],)).fetchone() == ('eLab', 'made by Sam Postdoc, as its owner in eLab')
 
 
 def test_a_records_page_links_to_its_elab_sample_and_sends_again(as_user, world, fake, monkeypatch):
@@ -795,3 +833,69 @@ def test_the_seed_banks_lists_without_elab(as_user, world, monkeypatch):
     s = _ok(as_user('ana').get('/api/elab/seed-lots'))
     assert not s['connected'] and not s['copies'] and 'token' not in s
     assert as_user('ana').post('/api/elab/seed-lots/sync', json={}).status_code == 400
+
+
+def _stopped_import(world, fake):
+    """Two glycerol stocks in eLab, in Box 5; here, as a bringing over left them when it stopped before linking."""
+    gs = _type(fake, 'Glycerol Stock')
+    for n in (1, 2):
+        fake.samples[700 + n] = {'sampleTypeID': gs, 'name': f'pStop{n}', 'altID': '', 'archived': False, 'owner': 'Pat Student',
+                                 'description': '', 'note': '', 'storageLayerID': 12, 'position': 20 + n, 'meta': {}}
+    with sqlite3.connect(world['paths']['stocks']) as conn:
+        for n in (1, 2):
+            conn.execute("INSERT INTO glycerol (id, code, lab, plasmid_name, elab_layer_id, elab_position, created_by) "
+                         "VALUES (?, ?, 'Gardiner Lab', ?, '12', ?, 'lead')", (f'stop{n}', f'GL-G-090{n}', f'pStop{n}', str(20 + n)))
+
+
+def test_a_bringing_over_that_stopped_is_linked_by_the_next_round(as_user, world, fake, monkeypatch):
+    # Their places in eLab are taken by their own samples: linked to those, never made a second time.
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    _stopped_import(world, fake)
+    before = len(fake.samples)
+    assert _run(fake) == {'sent': 2, 'failed': 0}
+    assert len(fake.samples) == before
+    links = elab._links('glycerol')
+    assert (links['stop1']['sample_id'], links['stop2']['sample_id'], links['stop1']['error']) == (701, 702, None)
+    got = {r['code']: r for r in _ok(as_user('lead').get('/api/glycerol'))['glycerol']}
+    assert got['GL-G-0901']['created_by'] == 'Pat Student'
+    assert _ok(as_user('lead').get('/api/elab/import?kind=glycerol&refresh=1'))['samples'] == []
+    # Another of the name in another place is not taken for it.
+    fake.samples[703] = {**fake.samples[701], 'position': 30}
+    with sqlite3.connect(world['paths']['stocks']) as conn:
+        conn.execute("INSERT INTO glycerol (id, code, lab, plasmid_name, elab_layer_id, elab_position) "
+                     "VALUES ('stop3', 'GL-G-0903', 'Gardiner Lab', 'pStop1', '12', '22')")
+    assert _run(fake)['failed'] == 1
+    assert 'no free space' in elab._links('glycerol')['stop3']['error']
+
+
+def test_bringing_over_again_links_what_a_stopped_one_left(as_user, world, fake, monkeypatch):
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    _stopped_import(world, fake)
+    lead = as_user('lead')
+    assert len(_ok(lead.get('/api/elab/import?kind=glycerol'))['samples']) == 2
+    res = _ok(lead.post('/api/elab/import/glycerol', json={'ids': [701, 702]}), 201)
+    assert (res['made'], res['linked']) == (0, 2)
+    got = _ok(lead.get('/api/glycerol'))['glycerol']
+    assert sorted(r['code'] for r in got) == ['GL-G-0901', 'GL-G-0902'] and {r['created_by'] for r in got} == {'Pat Student'}
+    fake.calls.clear()
+    assert _run(fake) == {'sent': 0, 'failed': 0} and not any(m == 'POST' for m, _ in fake.calls)
+
+
+def test_one_brought_over_is_never_made_again_in_elab(as_user, world, fake, monkeypatch):
+    # Brought over, then its link lost (the bringing over stopped between): linked again, not made.
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    gs = _type(fake, 'Glycerol Stock')
+    fake.samples[801] = {'sampleTypeID': gs, 'name': 'pLoose', 'altID': '', 'archived': False, 'owner': 'Pat Student',
+                         'description': '', 'note': '', 'storageLayerID': None, 'position': None, 'meta': {}}
+    _ok(as_user('lead').post('/api/elab/import/glycerol', json={'ids': [801]}), 201)
+    with sqlite3.connect(world['paths']['stocks']) as conn:
+        conn.execute("DELETE FROM elab_links")
+    fake.calls.clear()
+    assert _run(fake)['failed'] == 0 and not any(m == 'POST' for m, _ in fake.calls)
+    assert [l['sample_id'] for l in elab._links('glycerol').values()] == [801]

@@ -348,6 +348,18 @@ const App = {
           toast('Sending to eLabJournal');
           setTimeout(draw, 8000);
         } }, 'Send now') : null,
+        s.can_set ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.4rem',
+          title: 'Take what was changed in eLab since it was last sent: fields, places in storage, names of those brought over. Where both were changed, eLab is right.',
+          onclick: async (e) => {
+            const button = e.currentTarget;
+            button.disabled = true;
+            try {
+              const res = await api('POST', '/elab/pull', { lab });
+              toast(res.changed ? `Took eLab's changes to ${res.changed} of ${res.looked} linked, as eLab has them` : `Nothing changed in eLab (${res.looked} linked)`, 'success', 6000);
+              draw();
+              this.route();
+            } catch (err) { toast(err.message, 'error', 6000); } finally { button.disabled = false; }
+          } }, '⇧ Update from eLab') : null,
         s.can_set ? el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-left:.4rem', title: 'Bring over what eLab already has: glycerol stocks, plant material, and seed samples to the Seed Bank',
           onclick: () => this.importElab(s, draw) }, '⇩ Bring over from eLab…') : null,
         settings);

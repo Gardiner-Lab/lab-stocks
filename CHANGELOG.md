@@ -5,6 +5,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-26
+
+### Added
+- **⇧ Update from eLab** (for the lab admin, beside Send now): takes what was changed in eLab since it was
+  last sent, for every glycerol stock and tube linked to a sample there: a glycerol stock's fields (strain,
+  host system, markers, permit, biosafety, inserts, gene IDs, donor, harmful), where it is kept in eLab's
+  storage, and the name of one brought over from eLab. Where both were changed, eLab is right; what was
+  changed only here stays, and is sent at the next round. Each change is in the history ("changed in eLab").
+  It runs only when pressed.
+
 ## [0.8.0] - 2026-10-26
 
 ### Fixed

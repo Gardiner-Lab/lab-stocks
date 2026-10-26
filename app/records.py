@@ -589,6 +589,22 @@ def update(person: Person, kind: str, ident: str, data: dict) -> Optional[str]:
     return ordered
 
 
+def take_from_elab(kind: str, record_id: str, data: dict, by: str) -> List[str]:
+    """
+    Values changed in eLab, taken here (eLab is right): checked as any change is, and in the history as
+    changed in eLab. Gives the fields that changed.
+    """
+    fields = FIELDS[kind](data, partial=True)
+    with connect() as conn:
+        row = _row(conn, kind, record_id)
+        fields = {k: v for k, v in fields.items() if row[k] != v}
+        if fields:
+            conn.execute(f'UPDATE {TABLE[kind]} SET {", ".join(f"{k} = ?" for k in fields)}, '
+                         'updated_at = CURRENT_TIMESTAMP WHERE id = ?', (*fields.values(), row['id']))
+            _log(conn, kind, row['id'], by, 'changed in eLab: ' + '; '.join(f'{k}: {row[k]!r} → {v!r}' for k, v in fields.items()))
+    return list(fields)
+
+
 def delete(person: Person, kind: str, ident: str) -> None:
     with connect() as conn:
         row = changeable(conn, person, kind, ident)

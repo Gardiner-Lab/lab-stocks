@@ -899,3 +899,36 @@ def test_one_brought_over_is_never_made_again_in_elab(as_user, world, fake, monk
     fake.calls.clear()
     assert _run(fake)['failed'] == 0 and not any(m == 'POST' for m, _ in fake.calls)
     assert [l['sample_id'] for l in elab._links('glycerol').values()] == [801]
+
+
+def test_update_from_elab_takes_what_was_changed_there(as_user, world, fake, monkeypatch):
+    monkeypatch.setenv('ELAB_LABS', 'Gardiner Lab')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    gs = _type(fake, 'Glycerol Stock')
+    fake.samples[901] = {'sampleTypeID': gs, 'name': 'pPull', 'altID': '', 'archived': False, 'owner': 'Pat Student',
+                         'description': '', 'note': '', 'storageLayerID': 12, 'position': 4,
+                         'meta': {'Name of host strain': 'E.coli DH5a', 'Bacterial Markers': 'Kanamycin', 'Biosafety level': 'I'}}
+    _ok(lead.post('/api/elab/import/glycerol', json={'ids': [901]}), 201)
+    code = _ok(lead.get('/api/glycerol'))['glycerol'][0]['code']
+    # Nothing changed there yet.
+    assert _ok(lead.post('/api/elab/pull', json={})) == {'looked': 1, 'changed': 0}
+    # Changed in eLab: the strain, the place, the name; here: the strain too, and the clone.
+    _ok(lead.put(f'/api/glycerol/{code}', json={'host': 'E.coli TOP10', 'clone': '3'}))
+    fake.samples[901]['meta'].update({'Name of host strain': 'E.coli DB3.1', 'Biosafety level': 'II'})
+    fake.samples[901].update(position=7, name='pPull v2')
+    assert as_user('ana').post('/api/elab/pull', json={}).status_code == 403
+    assert _ok(lead.post('/api/elab/pull', json={})) == {'looked': 1, 'changed': 1}
+    g = _ok(lead.get('/api/glycerol'))['glycerol'][0]
+    assert (g['host'], g['biosafety'], g['elab_position'], g['plasmid_name']) == ('E.coli DB3.1', 'II', '7', 'pPull v2')
+    assert g['clone'] == '3' and g['selection'] == 'Kanamycin'          # changed only here: stays
+    with sqlite3.connect(world['paths']['stocks']) as conn:
+        what = conn.execute("SELECT changed_by, what FROM changes WHERE record_id = ? ORDER BY rowid DESC", (g['id'],)).fetchone()
+    assert what[0] == 'lead' and what[1].startswith('changed in eLab: ') and "'E.coli TOP10' → 'E.coli DB3.1'" in what[1]
+    # The round sends what was changed here only: eLab keeps its own changes.
+    _run(fake)
+    s = fake.samples[901]
+    assert (s['meta']['Name of host strain'], s['meta']['Biosafety level'], s['position'], s['name']) == ('E.coli DB3.1', 'II', 7, 'pPull v2')
+    assert 'Clone: 3' in s['meta']['Remarks']
+    assert _ok(lead.post('/api/elab/pull', json={})) == {'looked': 1, 'changed': 0}

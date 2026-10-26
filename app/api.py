@@ -375,6 +375,14 @@ def elab_sync(person):
     return jsonify({'ok': True})
 
 
+@api.post('/elab/pull')
+@signed_in
+def elab_pull(person):
+    """What was changed in eLab, taken here: for the lab admin, when asked (eLab is right)."""
+    lab = _elab_admin_lab(person)
+    return jsonify(elab.update_from_elab(lab, person.username))
+
+
 # --- the order list ---------------------------------------------------------------
 
 @api.get('/orders')

@@ -1030,6 +1030,78 @@ def owners_as_makers(lab: str, kind: str, refresh: bool = False, opener=None) ->
     return fixed
 
 
+# --- taking what was changed in eLab ------------------------------------------------
+
+# A glycerol stock's fields in eLab (by the start of their name there) and here. The others eLab has are
+# made from several here (Remarks, the sequence), and plant material's description and note likewise.
+FROM_ELAB = {'Permit': 'permit', 'Biosafety level': 'biosafety', 'Name of host strain': 'host',
+             'Host system': 'host_system', 'Bacterial Markers': 'selection', 'Plant Markers': 'plant_markers',
+             'Yeast Markers': 'yeast_markers', 'Insert(s)?': 'inserts', 'geneID(s)': 'gene_ids',
+             'Donororganism(s)': 'donor', 'Harmful gene product?': 'harmful', 'Remarks on harmful effects': 'harmful_notes'}
+
+
+def _as_here(field: str, value: str) -> str:
+    """A value from eLab as it is kept here: for a field with options, one of those (else none)."""
+    from app import records
+    allowed = {'biosafety': records.BIOSAFETY, 'host_system': records.HOST_SYSTEMS, 'inserts': records.YES_NO,
+               'harmful': records.HARMFUL}.get(field)
+    if allowed is None:
+        return value
+    first = str(value or '').split(',')[0].strip().casefold()
+    if field == 'host_system' and 'other' in first:
+        return 'other'
+    return next((a for a in allowed if a and a.casefold() == first), '')
+
+
+def update_from_elab(lab: str, by: str, opener=None) -> dict:
+    """
+    What was changed in eLab since it was last sent, taken here for every glycerol stock and tube linked to a
+    sample there (eLab is right, where both were changed): a glycerol stock's fields, where it is kept, and
+    the name of one brought over from eLab. What was changed only here stays, and is sent at the next round.
+    Gives how many were looked at and changed.
+    """
+    from app import records
+    c = connection(lab)
+    if c is None:
+        raise ValueError('Connect the lab to eLab first')
+    looked = changed = 0
+    with _lock:                     # no round meanwhile
+        paths = {p['id']: p['path'] for p in locations(lab, refresh=True, opener=opener)['locations']}
+        for kind in [k for k in c.kinds if k in TABLES]:
+            now = {s['id']: s for s in candidates(lab, kind, refresh=True, opener=opener, every=True)}
+            with connect() as conn:
+                mine = {r[0] for r in conn.execute(f'SELECT id FROM {TABLES[kind]} WHERE lab = ? AND deleted_at IS NULL', (lab,))}
+            for record_id, link in _links(kind).items():
+                s = now.get(link['sample_id']) if link['sample_id'] else None
+                if record_id not in mine or link['elab_url'] != c.url or link['archived'] or s is None:
+                    continue                # not this lab's, not linked, or archived in eLab (the round sees to that)
+                looked += 1
+                sent = json.loads(link['sent'] or '{}')
+                values, data = dict(sent.get('values') or {}), {}
+                if kind == 'glycerol':
+                    for key, value in s['meta'].items():
+                        field = next((f for start, f in FROM_ELAB.items() if key.startswith(start)), None)
+                        if field and str(value) != str(values.get(key, '')):
+                            data[field], values[key] = _as_here(field, value), value
+                storage = sent.get('storage') or {}
+                if (s['layer'], s['position']) != (storage.get('storageLayerID'), storage.get('position')):
+                    data.update(elab_layer_id=str(s['layer'] or ''), elab_position=str(s['position'] or ''),
+                                elab_layer_path=paths.get(s['layer'], '') if s['layer'] else '')
+                    storage = {'storageLayerID': s['layer'], 'position': s['position']} if s['layer'] else None
+                name = sent.get('name')
+                if link['elab_name'] and s['name'] and s['name'] != link['elab_name']:
+                    data['plasmid_name' if kind == 'glycerol' else 'name'] = name = s['name']
+                if not data:
+                    continue
+                if records.take_from_elab(kind, record_id, data, by):
+                    changed += 1
+                # As eLab has it now, so the round sends only what was changed here.
+                _keep(kind, record_id, link, elab_name=name if link['elab_name'] else None,
+                      sent=json.dumps({**sent, 'name': name, 'values': values, 'storage': storage}))
+    nudge()
+    return {'looked': looked, 'changed': changed}
+
+
 def seed_lot_ids(codes: List[str]) -> Dict[str, str]:
     """The Seed Bank's lots of these codes: code -> id (read only)."""
     conn = _seeds_db()

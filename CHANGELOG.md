@@ -5,6 +5,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-26
+
 ### Fixed
 - Bringing over many glycerol stocks or tubes from eLab at once could stop part way (the server gives a
   request two minutes), leaving them made here but not linked to their samples. Each round then tried to

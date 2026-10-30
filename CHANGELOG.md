@@ -5,6 +5,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-30
+
 ### Added
 - A **Help** page, *How to use Lab Stocks*: the habits that keep the tube and the record in step, finding
   something, the steps for each kind of record, boxes and places, labels, ordering, photos and files, the

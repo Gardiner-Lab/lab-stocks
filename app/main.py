@@ -11,7 +11,7 @@ import os
 
 from flask import Flask, redirect, render_template, request
 
-APP_VERSION = '0.12.0'
+APP_VERSION = '0.13.0'
 SOFOS_URL = ('https://uusofos.itis.software/default.aspx#ViewID=BOInformationPortal_ListView'
              '&ObjectClassName=GROS.Module.ExtensionModules.Intranet.BOInformationPortal')
 CHEMWATCH_URL = 'https://jr.chemwatch.net/chemwatch.web/'

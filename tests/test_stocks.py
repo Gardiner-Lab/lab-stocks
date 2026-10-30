@@ -334,3 +334,15 @@ def test_office_and_text_files_open_in_the_browser(as_user, monkeypatch):
                          data={'file': [(io.BytesIO(docx + b'x'), 'other.xls')]}), 201)['attachments'][0]
     failed = ana.get(f"/api/attachments/{other['id']}?view")
     assert failed.status_code == 502 and b'Download it' in failed.data
+
+
+def test_the_about_and_help_pages_are_there_without_signing_in(world):
+    client = world['app'].test_client()
+    for path, heading in (('/about', 'Lab Stocks'), ('/help', 'How to use Lab Stocks')):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        body = r.get_data(as_text=True)
+        assert heading in body and 'Trellis Tools' in body
+    # Each points at the other, so neither is a dead end.
+    assert '/help' in client.get('/about').get_data(as_text=True)
+    assert '/about' in client.get('/help').get_data(as_text=True)

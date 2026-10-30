@@ -23,6 +23,7 @@
     <nav class="tt-links">
         <a href="{{ links.editor }}/editor" target="_blank" rel="noopener">Plasmid Editor ↗</a>
         <a href="{{ links.notebook }}/" target="_blank" rel="noopener">Notebook ↗</a>
+        <a href="{{ request.script_root }}/help">Help</a>
         <a href="{{ request.script_root }}/about">About</a>
     </nav>
     <span class="tt-user">{{ person.username }}{% if person.lab %} · {{ person.lab }}{% endif %}{% if person.role == 'admin' %} · admin{% endif %}</span>

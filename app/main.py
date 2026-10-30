@@ -77,6 +77,10 @@ def create_app() -> Flask:
     def about_page():
         return render_template('about.html', version=APP_VERSION, links=links())
 
+    @app.route('/help')
+    def help_page():
+        return render_template('help.html', version=APP_VERSION, links=links())
+
     @app.route('/health')
     def health():
         return {'status': 'healthy', 'version': APP_VERSION}

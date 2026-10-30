@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Help · Lab Stocks</title>
+    <link rel="stylesheet" href="{{ request.script_root }}/static/trellis/trellis.css?v={{ version }}">
+    <link rel="stylesheet" href="{{ request.script_root }}/static/css/stocks.css?v={{ version }}">
+</head>
+<body class="tt">
+<header class="tt-bar">
+    <a class="tt-home" href="{{ request.script_root }}/" title="All of Trellis Tools"><img src="{{ request.script_root }}/static/trellis/trellis.svg" alt=""><span>Trellis Tools</span></a>
+    <a class="tt-module" href="{{ request.script_root }}/"><img src="{{ request.script_root }}/static/trellis/stocks.svg" alt="">Lab Stocks</a><span class="tt-sub">Help</span>
+</header>
+<main class="help">
+    <h1>How to use Lab Stocks</h1>
+    <p class="lead">A stock list is only worth keeping if the tube in the freezer and the record here say the
+       same thing. This page covers the habits that keep them in step, then the steps for each kind of thing
+       the lab stores, printing labels, the order list, and putting mistakes right.
+       <a href="{{ request.script_root }}/about">What Lab Stocks is →</a></p>
+
+    <nav class="help-toc">
+        <a href="#rules">Golden rules</a>
+        <a href="#find">Finding something</a>
+        <a href="#glycerol">Glycerol stocks</a>
+        <a href="#primers">Primers</a>
+        <a href="#chemicals">Chemicals and safety sheets</a>
+        <a href="#antibodies">Antibodies</a>
+        <a href="#material">Plant material</a>
+        <a href="#storage">Boxes and places</a>
+        <a href="#labels">Labels</a>
+        <a href="#orders">Ordering</a>
+        <a href="#files">Photos and files</a>
+        <a href="#notebook">The notebook and the editor</a>
+        <a href="#elab">eLabJournal</a>
+        <a href="#mistakes">Fixing mistakes</a>
+    </nav>
+
+    <section id="rules">
+        <h2>Golden rules</h2>
+        <ol class="rules">
+            <li><b>Write the code on the tube.</b> A tube without its code cannot be found again, however good
+                the record is. Print a label, or write the code on by hand.</li>
+            <li><b>Enter it when you make it, not later.</b> The box and position are the part people need most,
+                and the part nobody remembers a week on.</li>
+            <li><b>Make a glycerol stock from the plasmid, not by hand.</b> Confirming a clone by sequencing in
+                the Plasmid Editor makes the stock here, already linked to the sequence and its reads. Entering
+                one by hand leaves the tube with no map behind it.</li>
+            <li><b>One tube, one record.</b> Two tubes of the same clone in two boxes are two records, so either
+                can be found and used up on its own.</li>
+            <li><b>Mark, don't delete.</b> A tube that is finished: set it to <i>used up</i>. A chemical bottle
+                that is empty: switch it to <b>Out</b>, which also puts it on the order list. Deleting is for a
+                record that should never have existed.</li>
+            <li><b>Search before you order.</b> A primer can be found by any stretch of its sequence, and the
+                other labs of your chair group are searched too. The lab usually has it already.</li>
+            <li><b>Say where it is in words the next person will read.</b> <i>Freezer −80 #2 / box 4 / A3</i>
+                beats <i>my box</i>.</li>
+        </ol>
+    </section>
+
+    <section id="find">
+        <h2>Finding something</h2>
+        <p>The search box above each list looks at everything on the record at once, not just the name: a
+           code, a plasmid, a clone, a strain, a selection, a place, a supplier. For primers it also searches
+           the <b>sequence</b> &mdash; paste 15 bases and it finds every primer containing them, on either
+           strand.</p>
+        <p>Records belonging to the other labs of your chair group appear marked with their lab, and open
+           read-only. If something you expect is missing, it may belong to a lab outside the group, or have
+           been marked used up: clear the status filter to see those too.</p>
+    </section>
+
+    <section id="glycerol">
+        <h2>Glycerol stocks</h2>
+        <p>The usual route, which fills most of the record in for you:</p>
+        <ol class="steps">
+            <li>Sequence the clone and judge the reads in the <b>Plasmid Editor</b>.</li>
+            <li><b>Confirm</b> the plasmid there, naming the clone you confirmed. Its glycerol stock appears
+                here with the next code, linked to the plasmid.</li>
+            <li>Open the stock and fill in what the bench knows: the <b>host strain</b> and system
+                (<i>DH5α</i>, <i>GV3101</i>), the <b>selection</b>, and <b>where the tube is</b>.</li>
+            <li>Print its label and freeze it.</li>
+        </ol>
+        <p>For a stock with no plasmid in the editor &mdash; a strain from another lab, say &mdash; use
+           <b>＋ Glycerol stock</b> and type the plasmid name as text. Everything else works the same; only the
+           link to a map is missing.</p>
+        <p>The <b>biosafety level, permit, markers, inserts, gene IDs</b> and <b>donor organism</b> matter for
+           GMO records and for eLab. Fill them in once on the first stock of a plasmid; later stocks of the same
+           plasmid start from the same answers.</p>
+    </section>
+
+    <section id="primers">
+        <h2>Primers</h2>
+        <ol class="steps">
+            <li><b>Primers → ＋ Primer.</b> Paste the sequence; the length, GC and melting temperature are worked
+                out as you type.</li>
+            <li>Give it a name that says what it does (<i>35S-F</i>, <i>tRFP-seq-R</i>), its <b>direction</b>, and
+                the tube it is in.</li>
+            <li>Primers designed in the Plasmid Editor can be saved straight here, which keeps the sequence
+                exactly as designed.</li>
+        </ol>
+        <p>Before ordering, paste the sequence into the search box. If the lab already has it, you will see it,
+           including in the other labs of your chair group.</p>
+    </section>
+
+    <section id="chemicals">
+        <h2>Chemicals and safety sheets</h2>
+        <ol class="steps">
+            <li><b>Chemicals → ＋ Chemical.</b> Name, <b>CAS number</b>, supplier and product number, the size of
+                the container, and the room and shelf it lives on.</li>
+            <li>Attach the <b>safety data sheet</b> as a file, captioned <code>SDS</code>. It then shows in its own
+                place on the record, with an <b>Open the SDS</b> button, rather than among the photos.</li>
+            <li>When a bottle runs out, switch it to <b>Out</b>. It stays in the list, greyed, and is added to the
+                order list so the lab admin sees it needs replacing.</li>
+            <li>When the new bottle arrives and the order is marked <b>Received</b>, it goes back to in stock.</li>
+        </ol>
+    </section>
+
+    <section id="antibodies">
+        <h2>Antibodies</h2>
+        <ol class="steps">
+            <li><b>Antibodies → ＋ Antibody.</b> A short code to write on the tube, whether it is
+                <b>primary or secondary</b>, the producer and product number, and the animal it was raised in.</li>
+            <li>Put what the lab has learned in <b>Notes about the use</b>: the dilution that worked, the blocking
+                buffer, which fixation ruined it. This is the part that saves the next person a week.</li>
+        </ol>
+    </section>
+
+    <section id="material">
+        <h2>Plant material</h2>
+        <ol class="steps">
+            <li><b>Plant material → ＋ Tube</b> for a single sample: what it is (leaf DNA, RNA, protein), what it
+                was taken <b>from</b>, when, by whom, and the experiment it belongs to.</li>
+            <li>For a whole harvest, use the box entry to make the tubes of a box in one go, then correct the few
+                that differ.</li>
+            <li>Taken from a plant in the <b>Seed Bank</b>? Name that plant's code, so the sample and the plant
+                point at each other.</li>
+        </ol>
+    </section>
+
+    <section id="storage">
+        <h2>Boxes and places</h2>
+        <p>Write the place as a path from the biggest thing to the smallest, and use the same words every
+           time:</p>
+        <div class="flow">
+            <span class="flow-box">Freezer −80 #2</span><span class="flow-arrow">/</span>
+            <span class="flow-box">box 4</span><span class="flow-arrow">/</span>
+            <span class="flow-box">A3</span>
+        </div>
+        <p>With eLab switched on, the box and position travel to eLab as a real place in its storage, so a
+           position that is already taken there is reported rather than quietly overwritten.</p>
+    </section>
+
+    <section id="labels">
+        <h2>Labels</h2>
+        <ol class="steps">
+            <li>Tick the records in a list and press <b>Labels for selected</b>, or use <b>Label</b> on a single
+                record.</li>
+            <li>Choose the label stock you are printing on. The page draws them to size, so print at 100% with
+                scaling off.</li>
+            <li>Each label carries the <b>code</b>, the name, and a <b>QR code</b>. A phone camera on the QR code
+                opens the record, which is the quickest way to tell what an unlabelled-looking tube is.</li>
+            <li>With a DYMO printer, the labels can be downloaded as a file to send straight to it.</li>
+        </ol>
+    </section>
+
+    <section id="orders">
+        <h2>Ordering</h2>
+        <p>Anyone in the lab can ask for something; the lab's admin does the ordering. A request moves:</p>
+        <div class="flow">
+            <span class="flow-box">to order</span><span class="flow-arrow">— the lab admin orders it →</span>
+            <span class="flow-box">ordered</span><span class="flow-arrow">— it arrives →</span>
+            <span class="flow-box">received</span>
+        </div>
+        <ol class="steps">
+            <li><b>To ask:</b> <b>＋ Order request</b> on the Orders tab, or <b>Add to order</b> on a chemical,
+                primer or antibody that already exists. Say how much and why; the lab admin sees it at once.</li>
+            <li>You can change or cancel your own request <b>until it is ordered</b>.</li>
+            <li><b>Lab admins:</b> mark each <b>✓ Ordered</b> when you have ordered it, and <b>Received</b> when it
+                arrives. A chemical that had run out goes back to in stock by itself.</li>
+            <li>The Orders tab shows a count of what is waiting, and the requests of the other labs in your chair
+                group are listed with their lab, for their own admins to order.</li>
+        </ol>
+    </section>
+
+    <section id="files">
+        <h2>Photos and files</h2>
+        <p>Any record takes photos and files: a gel of the colony PCR, an order confirmation, a spec sheet, a
+           blot. Drag them onto the record or use <b>Add photos or files</b>.</p>
+        <p>Photos, PDFs, Word, PowerPoint and Excel files and text files <b>open in the browser</b> when you
+           click them &mdash; office files are shown as a PDF &mdash; so you can read a spec sheet without
+           downloading it. The original is always there to download beside it.</p>
+    </section>
+
+    <section id="notebook">
+        <h2>The notebook and the editor</h2>
+        <ul>
+            <li>In a <b>Lab Notebook</b> page, type <code>@</code> and pick a stock to link it. The stock then lists
+                every page that mentions it, under <i>Mentioned in</i>.</li>
+            <li>A glycerol stock's <b>plasmid</b> opens in the Plasmid Editor, with its map and its sequencing
+                reads.</li>
+            <li>From a plasmid, the <b>Seed Bank</b> shows the lines made with it, their seeds and plants.</li>
+        </ul>
+    </section>
+
+    <section id="elab">
+        <h2>eLabJournal</h2>
+        <p>For lab admins, once per lab. Under the eLab settings, give the address and an API token, choose
+           which kinds of record to copy and which eLab sample types they match.</p>
+        <ol class="steps">
+            <li><b>Bring over</b> what eLab already holds, once. Records are matched by box and position, so a
+                tube that is in both ends up as one record, not two.</li>
+            <li>In a group shared with other labs, set <b>the lab's own people</b>: each eLab owner who is one of
+                yours, and the suite account that is theirs. They are then credited for their own stocks; everyone
+                else's are held under the administrator with their eLab owner kept on the record.</li>
+            <li>After that it runs by itself. Press <b>⇧ Update from eLab</b> when something was changed in eLab
+                that should come back here.</li>
+        </ol>
+        <p>If a stock will not go to eLab, open it: the reason is on the record. Much the commonest is a storage
+           position already taken in eLab.</p>
+    </section>
+
+    <section id="mistakes">
+        <h2>Fixing mistakes</h2>
+        <ul>
+            <li><b>Wrong box or position:</b> just edit it. The change is logged with your name, and goes to eLab
+                on the next round.</li>
+            <li><b>Tube finished:</b> set it to <i>used up</i>, which keeps it findable and archives it in eLab.
+                Don't delete it &mdash; the notebook pages that used it still point at it.</li>
+            <li><b>Entered twice:</b> delete the one nothing points at. Deleting hides it; its code is never given
+                to anything else.</li>
+            <li><b>Credited to the wrong person:</b> for stocks brought over from a shared eLab group, this is
+                what <i>the lab's own people</i> settles. Add the person and their account, and everything of
+                theirs is re-credited at once.</li>
+            <li><b>Wrong lab code:</b> it can only be changed before the lab's first record. After that, ask an
+                administrator.</li>
+            <li><b>Not sure what changed:</b> every record has its own history at the bottom, saying who changed
+                what, and when.</li>
+        </ul>
+    </section>
+</main>
+</body>
+</html>

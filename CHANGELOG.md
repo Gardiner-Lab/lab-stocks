@@ -5,6 +5,18 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- A **Help** page, *How to use Lab Stocks*: the habits that keep the tube and the record in step, finding
+  something, the steps for each kind of record, boxes and places, labels, ordering, photos and files, the
+  notebook and the editor, setting up eLabJournal, and putting mistakes right. Linked from the top bar, and
+  from About.
+- **About** says much more: what each kind of record holds, how the codes are made, how the tools fit
+  together, who sees what, what eLab does, and where the data is kept.
+
+### Fixed
+- About said a lab's stocks are not seen by other labs. The other labs of its chair group do see them,
+  read-only, as the code has always had it.
+
 ## [0.12.0] - 2026-10-30
 
 ### Changed

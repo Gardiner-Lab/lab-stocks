@@ -10,29 +10,137 @@
 <body class="tt">
 <header class="tt-bar">
     <a class="tt-home" href="{{ request.script_root }}/" title="All of Trellis Tools"><img src="{{ request.script_root }}/static/trellis/trellis.svg" alt=""><span>Trellis Tools</span></a>
-    <a class="tt-module" href="{{ request.script_root }}/"><img src="{{ request.script_root }}/static/trellis/stocks.svg" alt="">Lab Stocks</a>
+    <a class="tt-module" href="{{ request.script_root }}/"><img src="{{ request.script_root }}/static/trellis/stocks.svg" alt="">Lab Stocks</a><span class="tt-sub">About</span>
 </header>
-<main class="about">
+<main class="help">
     <h1>Lab Stocks {{ version }}</h1>
-    <p>Trellis Tools' glycerol stocks, primers, chemicals and antibodies.</p>
-    <ul>
-        <li><b>Glycerol stocks</b>, numbered per lab (GL-G-0042) and linked to the plasmid they hold. Confirming
-            a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here.</li>
-        <li><b>Primers</b> (GL-O-0007) with their sequence, length, GC and Tm, and where the tube is. Primers
-            designed in the Plasmid Editor can be saved here, and the editor shows which bind a plasmid.</li>
-        <li><b>Chemicals</b> (GL-C-0003) with their CAS number, room, size and safety data sheet, and an Out
-            switch for one that has run out.</li>
-        <li><b>Antibodies</b> (GL-A-0005): short code, primary or secondary, producer, source animal,
-            product number and notes about the use.</li>
-        <li><b>Orders</b>: anyone asks for what the lab needs; the lab's lab admin orders it. Chemicals
-            switched to Out are added by themselves.</li>
-        <li>Storage, labels with QR codes, photos and files, and links from the Lab Notebook.</li>
-    </ul>
-    <p>A lab's stocks are shared within the lab and not seen by other labs. A lab's orders are seen by its
-       lab admins, and each request by the one who made it.</p>
-    <h2>Licence</h2>
-    <p>Free software under the GNU General Public License v3.0. Labels use
-       <a href="https://github.com/kazuhikoarase/qrcode-generator" rel="noopener">qrcode-generator</a> (MIT; see NOTICE).</p>
+    <p class="lead">What the lab keeps in its freezers, boxes and shelves: frozen cultures of its plasmids,
+       primers, chemicals, antibodies and plant material. Every tube has a code, a place and a person, and a
+       label you can print. <a href="{{ request.script_root }}/help">How to use it →</a></p>
+
+    <nav class="help-toc">
+        <a href="#holds">What it holds</a>
+        <a href="#codes">Codes</a>
+        <a href="#together">With the other tools</a>
+        <a href="#sees">Who sees what</a>
+        <a href="#elab">eLabJournal</a>
+        <a href="#kept">Where the data is kept</a>
+        <a href="#licence">Licence</a>
+    </nav>
+
+    <section id="holds">
+        <h2>What it holds</h2>
+        <div class="help-cards">
+            <div class="help-card">
+                <h3><img class="tt-glyph" src="{{ request.script_root }}/static/trellis/glyphs/stocks.svg" alt=""> Glycerol stocks <code>GL-G-0042</code></h3>
+                <p>Frozen cultures of the lab's plasmids, each linked to the plasmid it carries: the host strain
+                   and system, the selection, the clone number, the biosafety level and permit, the markers,
+                   inserts and gene IDs, and where the tube sits in which box.</p>
+            </div>
+            <div class="help-card">
+                <h3><img class="tt-glyph" src="{{ request.script_root }}/static/trellis/glyphs/primer.svg" alt=""> Primers <code>GL-O-0007</code></h3>
+                <p>With their sequence, length, GC and melting temperature worked out for you, their direction
+                   and the tube they are in. Searchable by any stretch of sequence, so you can tell whether the
+                   lab already has one before ordering another.</p>
+            </div>
+            <div class="help-card">
+                <h3><img class="tt-glyph" src="{{ request.script_root }}/static/trellis/glyphs/hazard.svg" alt=""> Chemicals <code>GL-C-0003</code></h3>
+                <p>With the CAS number, supplier and product number, the room and shelf, the size of the
+                   container and its safety data sheet. An <b>Out</b> switch for one that has run out, which puts
+                   it on the order list by itself.</p>
+            </div>
+            <div class="help-card">
+                <h3><img class="tt-glyph" src="{{ request.script_root }}/static/trellis/glyphs/antibody.svg" alt=""> Antibodies <code>GL-A-0005</code></h3>
+                <p>Primary or secondary, the producer and product number, the animal it was raised in, and notes
+                   on how it is used in the lab: dilutions, blocking, what worked and what did not.</p>
+            </div>
+            <div class="help-card">
+                <h3><img class="tt-glyph" src="{{ request.script_root }}/static/trellis/glyphs/leaf.svg" alt=""> Plant material <code>GL-M-0012</code></h3>
+                <p>Leaf DNA, RNA and protein in tubes: what it was taken from, when and by whom, and which
+                   experiment it belongs to. A whole box of tubes can be entered in one go.</p>
+            </div>
+            <div class="help-card">
+                <h3><img class="tt-glyph" src="{{ request.script_root }}/static/trellis/glyphs/cart.svg" alt=""> Orders</h3>
+                <p>Anyone in the lab asks for what is needed; the lab's admin orders it and marks it received. A
+                   chemical switched to <b>Out</b> joins the list without anyone asking.</p>
+            </div>
+        </div>
+        <p>Each kind also takes photos and files, which open in the browser, and a label with a QR code that
+           opens the record on a phone.</p>
+    </section>
+
+    <section id="codes">
+        <h2>Codes</h2>
+        <p>Every record has a code you can write on a tube, say out loud and search for. It starts with the
+           <b>lab's own code</b>, then a letter for the kind of thing, then its number:</p>
+        <div class="flow">
+            <span class="flow-box">GL</span><span class="flow-arrow">the lab</span>
+            <span class="flow-box">G</span><span class="flow-arrow">glycerol · O primer · C chemical · A antibody · M plant material</span>
+            <span class="flow-box">0042</span><span class="flow-arrow">its number in that lab</span>
+        </div>
+        <p>The lab's lead chooses the lab code before the lab's first record; after that it is fixed, so no two
+           labs ever share a code and a code is never reused. The Seed Bank uses the same lab code for its own
+           records, so <code>GL-S-0001</code> (a seed lot) and <code>GL-G-0001</code> (a glycerol stock) belong to
+           the same lab.</p>
+    </section>
+
+    <section id="together">
+        <h2>With the other tools</h2>
+        <ul>
+            <li><b>Plasmid Editor.</b> Confirming a plasmid by sequencing makes its glycerol stock here, with the
+                next number. A stock links back to the plasmid, so you can open its map and its reads from the
+                tube; the editor can tell you which of the lab's primers bind a plasmid.</li>
+            <li><b>Lab Notebook.</b> Type <code>@</code> in a page to link a stock. The stock then lists the pages
+                that mention it, so a tube shows what was done with it.</li>
+            <li><b>Seed Bank.</b> Plant material taken from a plant links to that plant, and a line can reach the
+                glycerol stocks of the plasmid it carries.</li>
+            <li><b>MoClo Library Tool.</b> The plasmids a stock holds are the ones assembled there.</li>
+        </ul>
+    </section>
+
+    <section id="sees">
+        <h2>Who sees what</h2>
+        <ul>
+            <li><b>Your lab</b> sees and changes its own stocks.</li>
+            <li><b>The other labs of your chair group</b> see them, but cannot change them. That is how a shared
+                antibody or chemical is found without asking around. Chair groups are set by an administrator on
+                the dashboard's Labs tab.</li>
+            <li><b>Other labs</b> see nothing of yours.</li>
+            <li><b>Orders</b> are seen by the lab's admins; everyone also sees their own requests.</li>
+        </ul>
+        <p>Deleting hides a record rather than erasing it: its code is never given to anything else, and the
+           pages and records pointing at it keep working.</p>
+    </section>
+
+    <section id="elab">
+        <h2>eLabJournal</h2>
+        <p>Where the university also keeps an inventory, Lab Stocks works alongside it rather than replacing it.
+           A lab admin connects the lab to eLab once; after that:</p>
+        <ul>
+            <li>Stocks made here are <b>copied to eLab</b> with their box and position, and archived there when
+                they are used up or deleted here.</li>
+            <li>What eLab already holds is <b>brought over</b> once, matched by box and position so nothing is
+                duplicated.</li>
+            <li><b>⇧ Update from eLab</b> takes what was changed in eLab since it was last sent, eLab being right
+                where both were changed.</li>
+            <li>In a group shared with other labs, <b>the lab's own people</b> are credited by name for the stocks
+                they made; the rest are held under the administrator with their eLab owner shown on the record,
+                so nobody's work is credited to the wrong person.</li>
+        </ul>
+    </section>
+
+    <section id="kept">
+        <h2>Where the data is kept</h2>
+        <p>On the lab's own server, in one SQLite database with the photos and files inside it, backed up each
+           night with the rest of the suite. Nothing goes anywhere else, apart from the copy in eLabJournal when
+           that is switched on.</p>
+    </section>
+
+    <section id="licence">
+        <h2>Licence</h2>
+        <p>Free software under the GNU General Public License v3.0. Labels use
+           <a href="https://github.com/kazuhikoarase/qrcode-generator" rel="noopener">qrcode-generator</a> (MIT; see NOTICE).</p>
+    </section>
 </main>
 </body>
 </html>

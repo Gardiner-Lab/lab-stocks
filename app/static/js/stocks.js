@@ -205,8 +205,11 @@ function localTime(stamp) {
   const d = new Date(String(stamp).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(stamp) ? '' : 'Z'));
   if (Number.isNaN(d.getTime())) return String(stamp).slice(0, 16);
   const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+/** A stored date (2026-10-30) as the lab writes it: 30-10-2026. Anything else as it is. */
+const euDate = (iso) => (/^\d{4}-\d\d-\d\d$/.test(String(iso || '')) ? String(iso).split('-').reverse().join('-') : (iso || ''));
 
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -593,7 +596,7 @@ const App = {
       material: ['', 'Code', 'Name', 'Tissue', 'Species / plant', 'Collected', 'Experiment', 'Kept in', 'Status'],
     }[kind];
     const cells = {
-      glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, r.made_on || (r.created_at || '').slice(0, 10),
+      glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, euDate(r.made_on) || localTime(r.created_at).slice(0, 10),
         r.source === 'sequencing' ? `${r.status} ✓` : r.status],
       primer: (r) => [r.name, el('span', { class: 'mono' }, r.mod5 ? el('span', { class: 'mod-tag' }, r.mod5) : null, r.sequence,
         r.mod3 ? el('span', { class: 'mod-tag' }, r.mod3) : null), r.length, r.tm !== null ? `${r.tm} °C` : '', r.location, [r.status, this.onOrderMark(r)]],
@@ -603,7 +606,7 @@ const App = {
       antibody: (r) => [el('b', {}, r.short_code), r.description, r.type, r.producer, r.host, el('span', { class: 'mono' }, r.product_number),
         el('span', { class: 'clip', title: r.notes }, r.notes), [r.status, this.onOrderMark(r)]],
       material: (r) => [el('b', {}, r.name), r.tissue, [r.species, r.from_plant].filter(Boolean).join(' · '),
-        [r.collected_on, r.collected_by].filter(Boolean).join(' · '), r.experiment,
+        [euDate(r.collected_on), r.collected_by].filter(Boolean).join(' · '), r.experiment,
         r.elab_layer_path ? `${r.elab_layer_path.split(' / ').slice(-2).join(' / ')}${r.elab_position ? ` · ${r.elab_position}` : ''}` : r.location, r.status],
     }[kind];
     return this.pickTable(head, rows.map((r) => r.code),
@@ -780,7 +783,7 @@ const App = {
           rec.source === 'sequencing' ? '✓ confirmed by sequencing: see the reads' : 'see the reads') : null],
         ['Clone', rec.clone], ['Strain', rec.host], ['Selection', rec.selection], ['Kept in', rec.location],
         ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
-        ['Made on', rec.made_on], ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`],
+        ['Made on', euDate(rec.made_on)], ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`],
         ['Owner in eLab', rec.elab_owner && rec.elab_owner !== rec.created_by ? rec.elab_owner : null]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null,
       this.section('Biosafety', this.facts([
@@ -950,7 +953,7 @@ const App = {
       this.head(rec, rec.name, [rec.tissue, rec.species, rec.status].filter(Boolean).join(' · '), [
         el('button', { class: 'btn btn-secondary', onclick: () => this.editMaterial(rec) }, '✎ Edit')]),
       this.facts([['Name on the tube', rec.name], ['Tissue', rec.tissue], ['Species', rec.species], ['From plant', rec.from_plant],
-        ['Description', rec.description], ['Collected', [rec.collected_on, rec.collected_by && `by ${rec.collected_by}`].filter(Boolean).join(' ')],
+        ['Description', rec.description], ['Collected', [euDate(rec.collected_on), rec.collected_by && `by ${rec.collected_by}`].filter(Boolean).join(' ')],
         ['Experiment', rec.experiment], ['Kept in', rec.location],
         ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
         ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`],
@@ -1257,7 +1260,7 @@ const App = {
       this.facts([['Length', `${rec.length} nt`], ['GC', `${rec.gc}%`], ['Tm', rec.tm !== null ? `${rec.tm} °C (nearest neighbour, 50 mM Na⁺, 250 nM primer)` : null],
         ['Direction', rec.direction], ['Target', rec.target], ['Purpose', rec.purpose],
         ['5′ modification', rec.mod5], ['3′ modification', rec.mod3], ['Other modifications', rec.modifications],
-        ['Supplier', rec.supplier], ['Ordered on', rec.ordered_on], ['Concentration', rec.concentration], ['Kept in', rec.location],
+        ['Supplier', rec.supplier], ['Ordered on', euDate(rec.ordered_on)], ['Concentration', rec.concentration], ['Kept in', rec.location],
         ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null);
   },

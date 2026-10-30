@@ -5,6 +5,11 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Dates are written day-first, as in Europe: 30-10-2026, and 30-10-2026 16:40 on the 24-hour clock: when a
+  glycerol stock was made, plant material collected, an antibody ordered, an order asked for, ordered and
+  received, who made or changed a record when, and on labels. Stored dates stay as they were (2026-10-30).
+
 ## [0.11.0] - 2026-10-26
 
 ### Added

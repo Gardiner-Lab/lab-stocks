@@ -4,6 +4,8 @@
  * record, laid out as the LabTAG DYMO label chosen. /labels?codes=S-0001,P-0003 ; print from the browser.
  */
 
+// A stored date (2026-10-30) as the lab writes it: 30-10-2026.
+const euDate = (iso) => (/^\d{4}-\d\d-\d\d$/.test(String(iso || '')) ? String(iso).split('-').reverse().join('-') : (iso || ''));
 const SB = window.ST;
 const KIND = { G: 'glycerol', O: 'primer', C: 'chemical', A: 'antibody', M: 'material' };
 const PATH = { glycerol: 'glycerol', primer: 'primers', chemical: 'chemicals', antibody: 'antibodies', material: 'material' };
@@ -39,14 +41,14 @@ function content(rec) {
   const target = `${publicBase()}/#${rec.kind}=${rec.code}`;
   const lines = {
     glycerol: () => [`${rec.plasmid_name}${rec.clone ? ` clone ${rec.clone}` : ''}`, [rec.host, rec.selection].filter(Boolean).join(' · '),
-      [rec.made_on, rec.location].filter(Boolean).join(' · ')],
+      [euDate(rec.made_on), rec.location].filter(Boolean).join(' · ')],
     primer: () => [rec.name, `${rec.mod5 ? `[${rec.mod5}]` : ''}${rec.sequence}${rec.mod3 ? `[${rec.mod3}]` : ''}`,
       [`${rec.length} nt`, rec.tm !== null ? `Tm ${rec.tm} °C` : '', rec.location].filter(Boolean).join(' · ')],
     chemical: () => [rec.name, rec.cas ? `CAS ${rec.cas}` : '', [rec.size, rec.room].filter(Boolean).join(' · ')],
     antibody: () => [[rec.short_code, rec.type].filter(Boolean).join(' · '), rec.description,
       [rec.host && `raised in ${rec.host}`, rec.producer, rec.product_number].filter(Boolean).join(' · ')],
     material: () => [rec.name, [rec.tissue, rec.species || rec.from_plant].filter(Boolean).join(' · '),
-      [rec.collected_on, rec.experiment].filter(Boolean).join(' · ')],
+      [euDate(rec.collected_on), rec.experiment].filter(Boolean).join(' · ')],
   }[rec.kind]();
   return { code: rec.code, lines: lines.filter(Boolean), url: target, kind: rec.kind };
 }

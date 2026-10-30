@@ -587,7 +587,11 @@ const App = {
   },
 
   listTable(kind, rows) {
-    if (!rows.length) return el('p', { class: 'empty' }, 'Nothing here yet.');
+    if (!rows.length) {
+      return el('div', { class: 'empty' }, el('p', {}, 'Nothing here yet.'),
+        el('p', { class: 'hint' }, 'New here? ', el('a', { href: url('/help') }, 'How to use Lab Stocks'),
+          ' — codes, boxes and places, labels, and the order list.'));
+    }
     const head = {
       glycerol: ['', 'Code', 'Plasmid', 'Clone', 'Strain', 'Selection', 'Kept in', 'Made', 'Status'],
       primer: ['', 'Code', 'Name', 'Sequence (5′→3′)', 'nt', 'Tm', 'Kept in', 'Status'],

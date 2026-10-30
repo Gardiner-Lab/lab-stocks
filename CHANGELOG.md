@@ -9,7 +9,7 @@ and the project uses [semantic versioning](https://semver.org/).
 - A **Help** page, *How to use Lab Stocks*: the habits that keep the tube and the record in step, finding
   something, the steps for each kind of record, boxes and places, labels, ordering, photos and files, the
   notebook and the editor, setting up eLabJournal, and putting mistakes right. Linked from the top bar, and
-  from About.
+  from About, and from an empty list.
 - **About** says much more: what each kind of record holds, how the codes are made, how the tools fit
   together, who sees what, what eLab does, and where the data is kept.
 

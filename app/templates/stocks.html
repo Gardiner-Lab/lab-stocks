@@ -21,8 +21,6 @@
         <a class="tt-tab view-tab" data-view="orders" href="#orders">Orders <span class="count-badge" id="orders-waiting" hidden></span></a>
     </nav>
     <nav class="tt-links">
-        <a href="{{ links.editor }}/editor" target="_blank" rel="noopener">Plasmid Editor ↗</a>
-        <a href="{{ links.notebook }}/" target="_blank" rel="noopener">Notebook ↗</a>
         <a href="{{ request.script_root }}/help">Help</a>
         <a href="{{ request.script_root }}/about">About</a>
     </nav>
@@ -43,5 +41,6 @@
     };
 </script>
 <script src="{{ request.script_root }}/static/js/stocks.js?v={{ version }}"></script>
+<script src="{{ request.script_root }}/static/trellis/modules.js?v={{ version }}" defer></script>
 </body>
 </html>

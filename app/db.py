@@ -257,6 +257,41 @@ CREATE TABLE IF NOT EXISTS lab_codes (
     set_by TEXT,
     set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- A lab sharing one of its stock lists (or all of them) with another lab, or
+-- with its own chair group. Set by the owning lab's lead or lab admin (app/shares.py).
+--   owner_lab    whose stocks these are
+--   kind         which list: 'glycerol', 'primer', 'chemical', 'antibody',
+--                'material', or 'all' for every list
+--   target_kind  'lab' (one named lab) or 'chair' (the owner's own chair group)
+--   target       the lab's name (target_kind 'lab'); '' for 'chair'
+--   can_edit     0 the other lab sees them; 1 it may change and delete them too
+-- The records themselves still belong to owner_lab (eLab is sent by owner_lab,
+-- with its own token); a share only widens who sees or changes them.
+CREATE TABLE IF NOT EXISTS shares (
+    id TEXT PRIMARY KEY,
+    owner_lab TEXT NOT NULL COLLATE NOCASE,
+    kind TEXT NOT NULL DEFAULT 'all',
+    target_kind TEXT NOT NULL DEFAULT 'lab',
+    target TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
+    can_edit INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_lab, kind, target_kind, target)
+);
+CREATE INDEX IF NOT EXISTS idx_shares_owner ON shares(owner_lab);
+
+-- A whole chair group sharing everything between its labs, set by an
+-- administrator. One row per group that has opted in; can_edit says whether the
+-- labs may change each other's stocks (0: see only, as a chair group does
+-- without this). Chair groups themselves are the suite's (app/chairs.py); this
+-- only records the group's own opt-in, by its suite chair_group_id.
+CREATE TABLE IF NOT EXISTS chair_sharing (
+    chair_group_id TEXT PRIMARY KEY,
+    can_edit INTEGER NOT NULL DEFAULT 0,
+    set_by TEXT,
+    set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

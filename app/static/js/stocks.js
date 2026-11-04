@@ -322,6 +322,119 @@ const App = {
     return line;
   },
 
+  /** Does this person share the chosen lab's stocks (its lead or lab admin, or an administrator)? */
+  canShareLab() {
+    const lab = this.meta.lab.lab;
+    if (this.meta.person.is_admin) return true;
+    if (lab.startsWith('user:')) return false;              // own stocks, no lab to share with
+    return (this.meta.person.labs || []).some((m) => m.lab && m.lab.toLowerCase() === lab.toLowerCase()
+      && (m.role === 'lab_lead' || m.lab_admin));
+  },
+
+  // Sharing the lab's stocks with another lab or its chair group, for its lead or lab admin.
+  shareLine() {
+    if (!this.canShareLab()) return null;
+    const lab = this.meta.lab.lab;
+    const line = el('p', { class: 'lab-code-line share-line' });
+    const draw = async () => {
+      let s;
+      try { s = await api('GET', `/shares?lab=${encodeURIComponent(lab)}`); } catch (e) { return; }
+      const n = s.shares.length;
+      const chairOn = s.chair_sharing && s.chair_sharing.on;
+      put(line,
+        chairOn
+          ? `Your chair group shares all its stocks${s.chair_sharing.can_edit ? ', to change' : ''}. `
+          : (n ? `Sharing ${n} ${n === 1 ? 'list' : 'lists'} with other labs. ` : 'The lab\'s stocks are its own. '),
+        el('button', { class: 'btn btn-secondary btn-sm', onclick: () => this.manageShares(lab, draw) },
+          glyph('link'), ' Share stocks…'));
+    };
+    draw();
+    return line;
+  },
+
+  /** The dialog for sharing a lab's lists, removing shares, and (for an admin) the chair-group-wide switch. */
+  async manageShares(lab, after) {
+    let s;
+    try { s = await api('GET', `/shares?lab=${encodeURIComponent(lab)}`); } catch (e) { toast(e.message, 'error'); return; }
+    const kindName = { glycerol: 'Glycerol stocks', primer: 'Primers', chemical: 'Chemicals',
+      antibody: 'Antibodies', material: 'Plant material', all: 'Everything' };
+    const targetName = (sh) => (sh.target_kind === 'chair' ? `your chair group${s.group ? ` (${s.group.name})` : ''}` : sh.target);
+
+    modal({
+      title: `Share ${lab}'s stocks`, wide: true,
+      build: (body, close) => {
+        const list = el('div', { class: 'share-list' });
+        const paint = () => {
+          put(list, s.shares.length ? s.shares.map((sh) => el('div', { class: 'share-row' },
+            el('span', {}, el('b', {}, kindName[sh.kind] || sh.kind), ' → ', targetName(sh),
+              el('span', { class: `lab-tag ${sh.can_edit ? 'lab-tag-edit' : ''}`, style: 'margin-left:.5rem' },
+                sh.can_edit ? 'to change' : 'to see')),
+            el('button', { class: 'btn btn-secondary btn-sm', onclick: async (e) => {
+              e.currentTarget.disabled = true;
+              try { s = await api('DELETE', `/shares/${sh.id}?lab=${encodeURIComponent(lab)}`); } catch (err) { toast(err.message, 'error'); return; }
+              paint(); after?.();
+            } }, 'Stop'))) : el('p', { class: 'hint' }, 'Nothing shared yet.'));
+        };
+        paint();
+
+        // Whom to share with: a lab, or the chair group.
+        const targetKind = el('select', {}, el('option', { value: 'lab' }, 'another lab'),
+          s.group ? el('option', { value: 'chair' }, `your chair group (${s.group.name})`) : null);
+        const labSel = el('select', {}, (s.other_labs || []).map((l) => el('option', { value: l }, l)));
+        const labField = el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Lab'), labSel);
+        targetKind.addEventListener('change', () => { labField.hidden = targetKind.value !== 'lab'; });
+        const kindSel = el('select', {}, el('option', { value: 'all' }, 'Everything'),
+          s.kinds.map((k) => el('option', { value: k }, kindName[k])));
+        const editSel = el('select', {}, el('option', { value: '' }, 'to see only'), el('option', { value: '1' }, 'to see and change'));
+
+        body.append(
+          el('p', { class: 'hint' }, 'Share a list — or everything — so another lab, or your whole chair group, can see it, or change it too. A shared stock still belongs to this lab; every change is kept in its history.'),
+          el('h3', {}, 'Shared now'), list,
+          el('h3', {}, 'Share a list'),
+          el('div', { class: 'share-form' },
+            el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'List'), kindSel),
+            el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'With'), targetKind),
+            labField,
+            el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'They may'), editSel),
+            el('button', { class: 'btn btn-primary', onclick: async (e) => {
+              e.currentTarget.disabled = true;
+              try {
+                s = await api('POST', '/shares', { lab, kind: kindSel.value, target_kind: targetKind.value,
+                  target: targetKind.value === 'lab' ? labSel.value : '', can_edit: !!editSel.value });
+              } catch (err) { toast(err.message, 'error'); e.currentTarget.disabled = false; return; }
+              paint(); after?.();
+              e.currentTarget.disabled = false;
+              toast('Shared');
+            } }, 'Share')),
+
+          // The whole chair group sharing everything: administrators only.
+          s.group && s.can_set_chair ? el('div', { class: 'chair-share' },
+            el('h3', {}, `Share everything across ${s.group.name}`),
+            el('p', { class: 'hint' }, 'Every lab of the chair group sees each other\'s stocks. As an administrator you can let them change each other\'s too.'),
+            (() => {
+              const on = s.chair_sharing.on;
+              const canEdit = s.chair_sharing.can_edit;
+              const row = el('div', { class: 'share-form' });
+              const mode = el('select', {}, el('option', { value: 'off', selected: !on }, 'off (seen only within the group, if grouped)'),
+                el('option', { value: 'see', selected: on && !canEdit }, 'on — labs see each other\'s'),
+                el('option', { value: 'edit', selected: on && canEdit }, 'on — labs change each other\'s'));
+              return put(row, el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Chair group sharing'), mode),
+                el('button', { class: 'btn btn-primary', onclick: async (e) => {
+                  e.currentTarget.disabled = true;
+                  try {
+                    s = await api('PUT', '/shares/chair', { lab, on: mode.value !== 'off', can_edit: mode.value === 'edit' });
+                  } catch (err) { toast(err.message, 'error'); e.currentTarget.disabled = false; return; }
+                  after?.();
+                  e.currentTarget.disabled = false;
+                  toast('Saved');
+                } }, 'Apply'));
+            })()) : null);
+      },
+      buttons: [{ label: 'Done', kind: 'secondary' }],
+      onClose: () => after?.(),
+    });
+  },
+
   // The copy in eLabJournal's inventory: how far it is, and for the lab admin, connecting it.
   elabLine() {
     const line = el('p', { class: 'lab-code-line elab-line' });
@@ -520,7 +633,8 @@ const App = {
     const draw = async () => {
       this[`q_${kind}`] = query.value;
       const data = await api('GET', `/${PLURAL[kind]}?q=${encodeURIComponent(query.value)}`);
-      put(table, this.listTable(kind, data[PLURAL[kind]].filter((r) => r.mine || wide)));
+      // Own and deliberately shared stocks always show; a chair group's other stocks on request.
+      put(table, this.listTable(kind, data[PLURAL[kind]].filter((r) => r.mine || r.shared || wide)));
     };
     let timer;
     query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
@@ -534,6 +648,7 @@ const App = {
             onclick: () => this.boxOfTubes() }, glyph('box'), ' Box of tubes…') : null, orderBtn, labelBtn)),
       this.labCodeLine(),
       this.chairLine(),
+      this.shareLine(),
       this.elabLine(),
       el('p', { class: 'hint' }, {
         glycerol: 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the next number.',
@@ -586,6 +701,22 @@ const App = {
     return table;
   },
 
+  /**
+   * The badge on another lab's stock: nothing for your own; for a stock shared
+   * with you, who owns it and whether you may change it; for a chair group's
+   * other stock seen without a share, that it is seen only.
+   */
+  labTag(r) {
+    if (r.mine && !r.shared) return null;                       // your own
+    const owner = r.owner_lab || r.lab;
+    if (r.shared) {
+      return el('span', { class: `lab-tag ${r.mine ? 'lab-tag-edit' : ''}`,
+        title: r.mine ? `${owner}'s, shared with your lab to change` : `${owner}'s, shared with your lab to see` },
+      owner, r.mine ? ' ✎' : '');
+    }
+    return el('span', { class: 'lab-tag', title: `${owner}'s, in your chair group: you see it, ${owner} changes it` }, owner);
+  },
+
   listTable(kind, rows) {
     if (!rows.length) {
       return el('div', { class: 'empty' }, el('p', {}, 'Nothing here yet.'),
@@ -616,7 +747,7 @@ const App = {
     return this.pickTable(head, rows.map((r) => r.code),
       el('tbody', {}, rows.map((r) => el('tr', { class: `clickable ${r.status !== 'in stock' ? 'faded' : ''}`, onclick: () => { location.hash = `${kind}=${r.code}`; } },
         el('td', { class: 'pick' }, this.pick(r.code)),
-        el('td', { class: 'code' }, r.code, r.mine ? null : el('span', { class: 'lab-tag', title: `${r.lab}'s: you see it, ${r.lab} changes it` }, r.lab)),
+        el('td', { class: 'code' }, r.code, this.labTag(r)),
         cells(r).map((c) => el('td', {}, c))))));
   },
 
@@ -671,7 +802,10 @@ const App = {
       el('div', {}, el('div', { class: 'crumbs' }, el('a', { href: `#${PLURAL[rec.kind]}` }, glyph(ICON[rec.kind]), ` All ${NAMES[rec.kind]}`)),
         el('h1', {}, el('span', { class: 'code-badge' }, rec.code), ' ', title),
         subtitle ? el('div', { class: 'hint' }, subtitle) : null, this.onOrder(rec)),
-      rec.mine ? null : el('p', { class: 'not-mine' }, `${rec.lab}'s, in your chair group: you see it, only ${rec.lab} changes it.`),
+      rec.mine ? (rec.shared ? el('p', { class: 'not-mine' }, `${rec.owner_lab || rec.lab}'s, shared with your lab to change: your edits are kept in its history.`) : null)
+        : el('p', { class: 'not-mine' }, rec.shared
+          ? `${rec.owner_lab || rec.lab}'s, shared with your lab to see: only ${rec.owner_lab || rec.lab} changes it.`
+          : `${rec.lab}'s, in your chair group: you see it, only ${rec.lab} changes it.`),
       !rec.mine ? el('span', { class: 'actions' }, el('button', { class: 'btn btn-secondary', onclick: () => this.openLabels([rec.code]) }, glyph('label'), ' Label')) :
       el('span', { class: 'actions' }, actions,
         ['glycerol', 'material'].includes(rec.kind) ? null : el('button', { class: 'btn btn-secondary', title: 'Put it on the lab\'s order list, with its details',

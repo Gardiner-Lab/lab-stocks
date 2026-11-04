@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request
 
-from app import attachments, chairs, elab, oligo, orders, people, records, sources, viewer
+from app import attachments, chairs, elab, oligo, orders, people, records, shares, sources, viewer
 from app.db import connect
 
 api = Blueprint('api', __name__)
@@ -94,6 +94,39 @@ def describe_oligo(person):
 def get_chair(person):
     """The lab's chair group (chosen by an administrator on the suite's dashboard), with its labs."""
     return jsonify(chairs.info(person, records.lab_of(person, request.args.get('lab'))))
+
+
+# --- sharing stock lists between labs --------------------------------------------
+
+@api.get('/shares')
+@signed_in
+def get_shares(person):
+    """A lab's shares, and its chair group's share-everything, for its lead or lab admin."""
+    return jsonify(shares.list_for(person, request.args.get('lab')))
+
+
+@api.post('/shares')
+@signed_in
+def post_share(person):
+    """Share a lab's list (or all) with another lab or its chair group."""
+    data = _body()
+    return jsonify(shares.create(person, data.get('lab'), str(data.get('kind') or 'all'),
+                                 str(data.get('target_kind') or 'lab'), str(data.get('target') or ''),
+                                 bool(data.get('can_edit'))))
+
+
+@api.delete('/shares/<share_id>')
+@signed_in
+def delete_share(person, share_id):
+    return jsonify(shares.remove(person, share_id, request.args.get('lab')))
+
+
+@api.put('/shares/chair')
+@signed_in
+def put_chair_share(person):
+    """Turn a chair group's share-everything on or off (administrators only)."""
+    data = _body()
+    return jsonify(shares.set_chair(person, data.get('lab'), bool(data.get('on')), bool(data.get('can_edit'))))
 
 
 @api.get('/elab')

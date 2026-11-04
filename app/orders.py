@@ -37,14 +37,17 @@ def _out(row, person: Person) -> dict:
     out['auto'] = bool(row['auto'])
     out['can_handle'] = person.administers(row['lab'])
     out['can_change'] = out['can_handle'] or (row['requested_by'] == person.username and row['status'] == 'requested')
-    # Another lab's, of the chair group: seen, not changed.
-    out['own_lab'] = can_change(person, row)
+    # Another lab's, of the chair group or shared: seen, not changed.
+    out['own_lab'] = can_change(person, row, row['record_kind'])
     return out
 
 
 def _sees(person: Person, row) -> bool:
-    """Their own lab's orders, and those of the other labs of its chair group; administrators all."""
-    return person.is_admin or (row['lab'] or '').casefold() in sees(person)
+    """
+    Their own lab's orders, those of the other labs of its chair group, and those
+    of a lab that shared the list the order is for; administrators all.
+    """
+    return person.is_admin or (row['lab'] or '').casefold() in sees(person, row['record_kind'])
 
 
 def _row(conn, person: Person, order_id) -> Any:

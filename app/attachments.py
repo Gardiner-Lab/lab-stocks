@@ -134,7 +134,7 @@ def fetch(person: Person, att_id: str) -> Dict:
 def _owner_any(conn, person: Person, row) -> None:
     """Visible to whoever sees the record, even one since removed."""
     rec = conn.execute(f'SELECT lab FROM {records.TABLE[row["record_kind"]]} WHERE id = ?', (row['record_id'],)).fetchone()
-    if rec is None or not records.can_see(person, rec):
+    if rec is None or not records.can_see(person, rec, row['record_kind']):
         raise records.NotFound('No such file')
 
 

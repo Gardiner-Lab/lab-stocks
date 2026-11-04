@@ -40,9 +40,20 @@ def name_of(lab: str) -> Optional[str]:
     return row['name'] if row else None
 
 
+def group_id(lab: str):
+    """The id of the lab's chair group in the suite, or None. Used to key a group's sharing."""
+    row = _group(lab)
+    return row['id'] if row else None
+
+
 def labs_in(group_id) -> List[str]:
     return [r['name'] for r in _read(_path(), 'SELECT name FROM labs WHERE chair_group_id = ? ORDER BY name COLLATE NOCASE',
                                      (group_id,))]
+
+
+def all_labs() -> List[str]:
+    """Every lab in the suite, by name, for choosing one to share with."""
+    return [r['name'] for r in _read(_path(), 'SELECT name FROM labs ORDER BY name COLLATE NOCASE')]
 
 
 def mates(labs: Set[str]) -> Set[str]:

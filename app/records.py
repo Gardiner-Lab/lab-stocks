@@ -85,24 +85,92 @@ def leads(person: Person, lab: str) -> bool:
     return person.is_admin or person.leads(lab) or lab.startswith('user:')
 
 
-def sees(person: Person) -> set:
-    """The labs (casefolded) whose stocks this person sees: theirs, and the other labs of their chair groups."""
-    cached = getattr(person, '_sees', None)
+def _own(person: Person) -> set:
+    return {n.casefold() for n in labs_of(person)}
+
+
+def _chair_view(person: Person) -> set:
+    """The other labs of this person's chair groups: seen read-only, the long-standing rule."""
+    cached = getattr(person, '_chair_view', None)
     if cached is None:
         from app import chairs
-        own = {n.casefold() for n in labs_of(person)}
-        cached = own | chairs.mates(own)
-        person._sees = cached
+        cached = chairs.mates(_own(person))
+        person._chair_view = cached
     return cached
 
 
-def can_see(person: Person, row) -> bool:
-    return person.is_admin or (row['lab'] or '').casefold() in sees(person)
+def _shared_view(person: Person) -> Dict[str, set]:
+    """kind -> labs whose stocks of that kind this person sees through a share (cached)."""
+    cached = getattr(person, '_shared_view', None)
+    if cached is None:
+        from app import shares
+        cached = shares.shared_in(person)
+        person._shared_view = cached
+    return cached
 
 
-def can_change(person: Person, row) -> bool:
-    """Their own lab's: a chair group's other labs see a stock, but do not change it."""
-    return person.is_admin or (row['lab'] or '').casefold() in {n.casefold() for n in labs_of(person)}
+def _shared_edit(person: Person) -> Dict[str, set]:
+    """kind -> labs whose stocks of that kind this person may change through a share (cached)."""
+    cached = getattr(person, '_shared_edit', None)
+    if cached is None:
+        from app import shares
+        cached = shares.editable_in(person)
+        person._shared_edit = cached
+    return cached
+
+
+def sees(person: Person, kind: Optional[str] = None) -> set:
+    """
+    The labs (casefolded) whose stocks this person sees: theirs, the other labs
+    of their chair groups (read-only), and labs that have shared a list with
+    them. kind names the list, so a share of one list only widens that list; a
+    chair-group opt-in to share everything widens all of them. Without a kind (a
+    free-text order request, not tied to a list) only their own and chair-group
+    labs are included, never a per-list share.
+    """
+    base = _own(person) | _chair_view(person)
+    if kind is not None:
+        base = base | _shared_view(person).get(kind, set())
+    else:
+        # The chair-group "share everything" opt-in applies to every list, so it
+        # widens a listless order too; a per-list share does not.
+        base = base | _shared_view(person).get('_wide', set())
+    return base
+
+
+def can_see(person: Person, row, kind: Optional[str] = None) -> bool:
+    return person.is_admin or (row['lab'] or '').casefold() in sees(person, kind)
+
+
+def can_change(person: Person, row, kind: Optional[str] = None) -> bool:
+    """
+    Their own lab's, or a lab's that shared this list and let them change it. A
+    chair group's other labs see a stock but, without such a share, do not change it.
+    """
+    if person.is_admin:
+        return True
+    lab = (row['lab'] or '').casefold()
+    if lab in _own(person):
+        return True
+    editable = _shared_edit(person)
+    if kind is None:
+        return lab in editable.get('_wide', set())
+    return lab in editable.get(kind, set())
+
+
+def shared_with(person: Person, row, kind: Optional[str] = None) -> bool:
+    """
+    Whether this person reaches the record through a deliberate share (a per-list
+    share or a chair-group opt-in to share everything), as opposed to the ambient
+    read-only chair-group view. The list uses it to always show a shared stock,
+    where a chair group's other stocks only show when asked for.
+    """
+    lab = (row['lab'] or '').casefold()
+    if lab in _own(person):
+        return False
+    if kind is None:
+        return lab in _shared_view(person).get('_wide', set())
+    return lab in _shared_view(person).get(kind, set())
 
 
 def _text(value: Any, limit: int = 500) -> str:
@@ -234,23 +302,28 @@ def _row(conn, kind: str, ident: str):
 
 def visible(conn, person: Person, kind: str, ident: str):
     row = _row(conn, kind, ident)
-    if not can_see(person, row):
+    if not can_see(person, row, kind):
         raise NotFound(f'No such {NAMES[kind]}')
     return row
 
 
 def changeable(conn, person: Person, kind: str, ident: str):
-    """A record this person may change: their own lab's."""
+    """A record this person may change: their own lab's, or one shared with them to change."""
     row = visible(conn, person, kind, ident)
-    if not can_change(person, row):
-        raise Forbidden(f"This {NAMES[kind]} is {row['lab']}'s: only its own lab changes it")
+    if not can_change(person, row, kind):
+        raise Forbidden(f"This {NAMES[kind]} is {row['lab']}'s, and shared only to see, not to change")
     return row
 
 
 def _out(kind: str, row, person: Optional[Person] = None) -> dict:
     out = {k: row[k] for k in row.keys()}
     out['kind'] = kind
-    out['mine'] = person is None or can_change(person, row)
+    out['mine'] = person is None or can_change(person, row, kind)
+    # The owning lab, so the client can tag another lab's shared stock with it.
+    out['owner_lab'] = row['lab'] if 'lab' in row.keys() else None
+    # Reached through a deliberate share (always shown), not only the chair-group
+    # view (shown on request). False for one's own.
+    out['shared'] = person is not None and shared_with(person, row, kind)
     if kind == 'primer':
         out.update(oligo.describe(row['sequence']))
     return out
@@ -279,7 +352,7 @@ def detail(person: Person, kind: str, ident: str) -> dict:
         if kind == 'glycerol' and row['plasmid_id']:
             out['same_plasmid'] = [{'code': r['code'], 'clone': r['clone'], 'status': r['status']} for r in conn.execute(
                 'SELECT * FROM glycerol WHERE plasmid_id = ? AND id != ? AND deleted_at IS NULL ORDER BY created_at',
-                (row['plasmid_id'], row['id'])) if can_see(person, r)]
+                (row['plasmid_id'], row['id'])) if can_see(person, r, 'glycerol')]
         return out
 
 
@@ -294,19 +367,19 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
                    'OR c.size LIKE ? OR c.notes LIKE ?)')
             args = [SDS] + [like] * 6
             rows = conn.execute(sql + ' ORDER BY c.name COLLATE NOCASE, c.rowid', args).fetchall()
-            return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
+            return [_out(kind, r, person) for r in rows if can_see(person, r, kind)][:limit]
         if kind == 'material':
             sql = ('SELECT * FROM material WHERE deleted_at IS NULL AND (code LIKE ? OR name LIKE ? OR tissue LIKE ? '
                    'OR species LIKE ? OR from_plant LIKE ? OR description LIKE ? OR experiment LIKE ? OR collected_by LIKE ? '
                    'OR location LIKE ? OR elab_layer_path LIKE ? OR notes LIKE ?) ORDER BY created_at DESC, rowid DESC')
             rows = conn.execute(sql, [like] * 11).fetchall()
-            return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
+            return [_out(kind, r, person) for r in rows if can_see(person, r, kind)][:limit]
         if kind == 'antibody':
             sql = ('SELECT * FROM antibodies WHERE deleted_at IS NULL AND (code LIKE ? OR short_code LIKE ? '
                    'OR description LIKE ? OR type LIKE ? OR producer LIKE ? OR host LIKE ? OR product_number LIKE ? '
                    "OR notes LIKE ?) ORDER BY short_code = '', short_code COLLATE NOCASE, description COLLATE NOCASE, rowid")
             rows = conn.execute(sql, [like] * 8).fetchall()
-            return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
+            return [_out(kind, r, person) for r in rows if can_see(person, r, kind)][:limit]
         if kind == 'glycerol':
             sql = ('SELECT * FROM glycerol WHERE deleted_at IS NULL AND (code LIKE ? OR plasmid_name LIKE ? OR clone LIKE ? '
                    'OR host LIKE ? OR selection LIKE ? OR location LIKE ? OR notes LIKE ?)')
@@ -323,7 +396,7 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
                    + (' OR sequence LIKE ?' if by_sequence else '') + ')')
             args = [like] * 9 + ([f'%{seq}%'] if by_sequence else [])
         rows = conn.execute(sql + ' ORDER BY created_at DESC, rowid DESC', args).fetchall()
-    return [_out(kind, r, person) for r in rows if can_see(person, r)][:limit]
+    return [_out(kind, r, person) for r in rows if can_see(person, r, kind)][:limit]
 
 
 def search(person: Person, q: str, limit: int = 20) -> List[dict]:

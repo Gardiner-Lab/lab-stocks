@@ -111,6 +111,26 @@ the suite's database. Each lab is in one at most; the lists say which.
 - eLab stays per lab: each lab sends its own stocks with its own token; in a
   shared eLab group, a sample's owner says whose it is.
 
+## Sharing
+
+Beyond a chair group's read-only view, stocks can be shared on purpose.
+
+- **A lab shares a list.** Its lead or lab admin shares one list — glycerol
+  stocks, primers, chemicals, antibodies or plant material — or *all* of them,
+  with another lab, or with its own chair group. A share lets the other lab
+  **see** the stocks, or **change and delete** them as well. So one lab can hand
+  the shared chemicals list to a neighbour to keep up to date, while its primers
+  stay its own.
+- **A whole chair group shares everything.** An administrator turns on sharing
+  for a chair group, so all its labs see each other's stocks, and optionally
+  change them. This stacks with per-lab shares: a lab can share everything within
+  its own chair group and, as well, a single list with one lab of another group.
+- A shared stock still **belongs to the lab that made it**. It shows that lab,
+  and another lab's is marked as theirs. Every change is kept in the stock's
+  history with who made it, and a delete is a soft delete, so a shared lab's
+  edits are recorded and recoverable like any other. eLab is unchanged: the
+  owning lab still sends it with its own token.
+
 ## eLabJournal
 
 Lab Stocks copies a lab's **glycerol stocks**, and its **seed lots** from the Seed

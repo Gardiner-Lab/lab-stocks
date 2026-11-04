@@ -34,6 +34,18 @@ a { color: var(--primary); }
 .lab-tag { display: inline-block; margin-left: .4rem; font-size: .72rem; padding: .05rem .4rem; border-radius: .6rem;
     background: var(--border); color: var(--muted); font-family: inherit; vertical-align: middle; }
 .not-mine { margin: .4rem 0 0; font-size: .88rem; color: var(--muted); }
+/* A list shared to change, not only to see: the suite's green, so it reads as "you may edit this". */
+.lab-tag-edit { background: var(--tt-green-soft, #e3efe3); color: var(--tt-green-ink, #2f5d33); }
+
+/* Sharing dialog: the lists shared now, and the form to share one. */
+.share-line .btn { margin-left: .3rem; }
+.share-list { display: flex; flex-direction: column; gap: .35rem; margin: .4rem 0 1rem; }
+.share-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+    padding: .4rem .6rem; border: 1px solid var(--border); border-radius: .4rem; }
+.share-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; margin-bottom: .5rem; }
+.share-form .field { margin-bottom: 0; }
+.chair-share { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--border); }
+.chair-share h3 { margin: .1rem 0 .4rem; }
 
 .elab-failed { color: var(--danger); }
 .elab-steps h3 { margin: .1rem 0 .6rem; }

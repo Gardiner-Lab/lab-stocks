@@ -5,6 +5,30 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-04
+
+### Added
+- **Sharing stock lists between labs.** On top of a chair group seeing each other's stocks read-only, a lab's
+  lead or lab admin can now share one list — glycerol stocks, primers, chemicals, antibodies or plant material —
+  or all of them, with another lab, or with its own chair group. A share is to **see** only, or lets the other
+  lab **change and delete** the records too. Shared stocks show the owning lab, and another lab's are marked as
+  theirs; every edit is in the record's history with who made it, and a delete is a soft delete, so a shared
+  lab's changes are recorded and recoverable like any other.
+- **A whole chair group sharing everything.** An administrator can turn on sharing for a chair group, so all its
+  labs see each other's stocks, and optionally change them. This stacks with per-lab shares, so a lab can share
+  everything within its own chair group and, as well, one list with a single lab of another group.
+- The records always belong to the lab that made them: eLab is still sent by that lab with its own token, and a
+  shared record's owner never changes; a share only widens who may see or change it.
+- **Share stocks…** on the lists, for a lab's lead or lab admin (and administrators): a dialog showing what the
+  lab shares now, each with a Stop button, and a form to share a list or everything with a lab or the chair
+  group, to see or to change. Administrators also get the chair group's share-everything switch there.
+- A stock shared with your lab always shows in its list, tagged with its owning lab (green with ✎ when you may
+  change it); a chair group's other stocks, seen without a share, still show only when asked for. A stock's page
+  says whose it is and what you may do with it.
+- API: `GET/POST /api/shares`, `DELETE /api/shares/<id>` (a lab's lead or lab admin), and `PUT /api/shares/chair`
+  to turn a chair group's share-everything on or off (administrators only). Records carry `owner_lab` and
+  `shared`. The `shares` and `chair_sharing` tables are added to the database on starting.
+
 ## [0.14.0] - 2026-10-31
 
 ### Added

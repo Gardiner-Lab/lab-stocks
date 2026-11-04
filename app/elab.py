@@ -96,7 +96,17 @@ class Connection:
     set_at: Optional[str] = None
 
     def type_name(self, kind: str) -> str:
-        return (self.sample_types.get(kind) or '').strip() or SAMPLE_TYPES[kind]
+        """Where a new sample of this kind is made: the first of its types."""
+        return self.type_names(kind)[0]
+
+    def type_names(self, kind: str) -> List[str]:
+        """
+        Every eLab sample type this kind is kept in. A lab may hold the same sort of thing under more
+        than one type - a MoClo kit's tubes are glycerol stocks, but eLab files them as 'MoClo kit
+        Stock' - and all of them should be brought over. New samples are made in the first.
+        """
+        names = [n.strip() for n in (self.sample_types.get(kind) or '').split(',') if n.strip()]
+        return names or [SAMPLE_TYPES[kind]]
 
 
 def _env_connection(lab: str) -> Optional[Connection]:
@@ -174,11 +184,18 @@ def save(lab: str, by: str, data: dict, opener=None) -> Connection:
     names = data.get('sample_types') or {}
     types = {}
     for k in kinds:
-        name = str(names.get(k) or SAMPLE_TYPES[k]).strip()
-        match = next((t for t in found['sample_types'] if t.casefold() == name.casefold()), None)
-        if match is None:
-            raise ValueError(f'eLab has no sample type called {name}: choose one it has')
-        types[k] = match
+        # One kind may be kept in several of eLab's sample types, named one after another. The first is
+        # where new samples are made; the rest are read as well, so what a lab already has comes over.
+        given = names.get(k)
+        wanted = [n.strip() for n in (given if isinstance(given, str) else ','.join(given or [])).split(',') if n.strip()]
+        matched = []
+        for name in wanted or [SAMPLE_TYPES[k]]:
+            match = next((t for t in found['sample_types'] if t.casefold() == name.casefold()), None)
+            if match is None:
+                raise ValueError(f'eLab has no sample type called {name}: choose one it has')
+            if match not in matched:
+                matched.append(match)
+        types[k] = ', '.join(matched)
     given = data.get('defaults') or {}
     defaults = {k: {f: str((given.get(k) or {}).get(f) or '').strip()[:100] for f in LAB_FIELDS} for k in kinds}
     with connect() as conn:
@@ -583,6 +600,26 @@ def _existing(client: Client, st: SampleType, item: Item) -> Optional[int]:
         found = _items(client.call('GET', '/samples', query={'sampleTypeID': st.id, 'name': item.name, '$records': 5}))
         same = [f for f in found if (f.get('name') or '').strip() == item.name and not f.get('archived')
                 and not str(f.get('altID') or '').strip()]
+    if not same and item.called and item.called != item.name and not item.from_elab:
+        # The same thing under the name eLab knows it by. A sample is sent as 'GL-G-1233 E.coli DH5a',
+        # which never equals the 'E.coli DH5a' eLab already holds, so without this a stock typed in here
+        # for a plasmid the group already has is made a second time. Only an unmistakable match counts:
+        # one sample of that name, unarchived, carrying nobody's code and linked to nothing here. One
+        # brought over from eLab is not matched here: it has its own way in, which credits its owner.
+        for name in (item.called,):
+            loose = [f for f in _items(client.call('GET', '/samples',
+                                                   query={'sampleTypeID': st.id, 'name': name, '$records': 20}))
+                     if (f.get('name') or '').strip() == name and not f.get('archived')
+                     and not str(f.get('altID') or '').strip()]
+            if len(loose) == 1:
+                # Keep the name eLab knows it by. The sample is someone else's record of the same
+                # plasmid; taking it over is right, renaming it under our code is not. Whoever made it
+                # there is credited with it here, as adopting one any other way does.
+                item.name = name
+                if item.kind in TABLES:
+                    with connect() as conn:
+                        set_maker(conn, item.kind, item.id, loose[0].get('owner'))
+                same = loose
     linked = _linked_samples()
     same = [f for f in same if int(f['sampleID']) not in linked]
     return int(same[0]['sampleID']) if same else None
@@ -851,10 +888,13 @@ def candidates(lab: str, kind: str, refresh: bool = False, opener=None, every: b
         samples = cached[1]
     else:
         client = Client(c.url, c.token, opener)
-        st = sample_type(client, c.type_name(kind))
         paths = {p['id']: p['path'] for p in locations(lab, opener=opener)['locations']}
         samples = []
-        for s in _all(client, '/samples', {'sampleTypeID': st.id, '$expand': 'meta'}):
+        # Every sample type this kind is kept in, not only the one new samples are made in: a lab that
+        # files its MoClo kit under its own type still wants those tubes brought over as stocks.
+        for s in [s for name in c.type_names(kind)
+                  for s in _all(client, '/samples',
+                                {'sampleTypeID': sample_type(client, name).id, '$expand': 'meta'})]:
             if s.get('archived'):
                 continue
             meta = {str(m.get('key') or '').strip(): m.get('value') or '' for m in (s.get('meta') or [])}
@@ -1224,7 +1264,9 @@ def status(lab: str, only: Optional[str] = None) -> dict:
            'synced': 0, 'waiting': 0, 'failed': [], 'held': 0}
     if c is None:
         return out
-    out.update(url=c.url, source=c.source, kinds=c.kinds, sample_types={k: c.type_name(k) for k in c.kinds},
+    out.update(url=c.url, source=c.source, kinds=c.kinds,
+               # Every type a kind is kept in, the one new samples are made in first.
+               sample_types={k: ', '.join(c.type_names(k)) for k in c.kinds},
                defaults=c.defaults, set_by=c.set_by, set_at=c.set_at)
     for kind in c.kinds:
         if only and kind != only:

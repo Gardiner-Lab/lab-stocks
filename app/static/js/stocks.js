@@ -555,7 +555,12 @@ const App = {
       const types = found.sample_types;
       const has = (name) => types.find((t) => t.toLowerCase() === name.toLowerCase());
       const rows = current.all_kinds.map(([kind, standard, title]) => {
-        const chosen = has((current.sample_types && current.sample_types[kind]) || standard) || '';
+        // A kind may be kept in several of eLab's sample types, named one after another; the first is
+        // where new samples are made, the rest are only read.
+        const named = String((current.sample_types && current.sample_types[kind]) || standard)
+          .split(',').map((n) => n.trim()).filter(Boolean);
+        const chosen = has(named[0] || standard) || '';
+        const alsoNow = new Set(named.slice(1).map((n) => has(n)).filter(Boolean));
         const tick = el('input', { type: 'checkbox' });
         tick.checked = current.connected ? current.kinds.includes(kind) : !!chosen;
         const select = el('select', {}, el('option', { value: '' }, '— choose —'), ...types.map((n) => el('option', { value: n }, n)));
@@ -576,9 +581,26 @@ const App = {
             return el('label', {}, `${f} `, input);
           }));
         };
-        select.addEventListener('change', () => { tick.checked = !!select.value; drawExtra(); });
+        // The other types this kind is also kept in: read as well, so tubes a lab files elsewhere -
+        // a MoClo kit under its own type, say - are brought over too. Nothing is ever made in them.
+        const also = el('div', { class: 'elab-also' });
+        const boxes = {};
+        const drawAlso = () => {
+          put(also, [
+            el('div', { class: 'hint' }, 'Also bring over from, without ever adding to:'),
+            ...types.filter((n) => n !== select.value).map((n) => {
+              const b = el('input', { type: 'checkbox' });
+              b.checked = boxes[n] ? boxes[n].checked : alsoNow.has(n);
+              boxes[n] = b;
+              return el('label', { class: 'elab-also-one' }, b, ` ${n}`);
+            })]);
+        };
+        select.addEventListener('change', () => { tick.checked = !!select.value; drawExtra(); drawAlso(); });
         drawExtra();
-        return { kind, tick, select, picks, row: el('tr', {}, el('td', {}, el('label', {}, tick, ` ${title}`)), el('td', {}, select, extra)) };
+        drawAlso();
+        const names = () => [select.value, ...types.filter((n) => n !== select.value && boxes[n] && boxes[n].checked)];
+        return { kind, tick, select, picks, names,
+                 row: el('tr', {}, el('td', {}, el('label', {}, tick, ` ${title}`)), el('td', {}, select, extra, also)) };
       });
       step(3, 'Choose what to copy',
         el('p', {}, 'eLab accepted the token. Each ticked goes to one of the group\'s sample types, in the fields it has: ',
@@ -592,7 +614,7 @@ const App = {
           const missing = ticked.find((r) => !r.select.value);
           if (missing) throw new Error('Choose the sample type for each thing ticked');
           const s = await api('PUT', '/elab', { lab, url: address.value, token: token.value, kinds: ticked.map((r) => r.kind),
-            sample_types: Object.fromEntries(ticked.map((r) => [r.kind, r.select.value])),
+            sample_types: Object.fromEntries(ticked.map((r) => [r.kind, r.names()])),
             defaults: Object.fromEntries(ticked.map((r) => [r.kind, Object.fromEntries(Object.entries(r.picks).map(([f, i]) => [f, i.value]))])) });
           put(steps, el('h3', {}, '✓ Connected to eLabJournal'),
             el('p', {}, `The first copy starts now: ${s.waiting} to send. The line above the list says how far it is; `,

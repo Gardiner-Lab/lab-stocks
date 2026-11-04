@@ -5,6 +5,25 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-04
+
+### Added
+- **A kind can be kept in several of eLab's sample types.** A lab may file the same sort of thing under
+  more than one type - a MoClo kit's tubes are glycerol stocks, but eLab keeps them as *MoClo kit
+  Stock* - and until now only one type was ever read, so those tubes could not be brought over at all.
+  The connect dialog now offers, under the type chosen, **also bring over from** with the group's other
+  types. All of them are read; new samples are only ever made in the first, so nothing is added to a
+  kit's own type by accident.
+
+### Fixed
+- **A stock is no longer copied into eLab a second time when the group already has that plasmid.** A
+  sample is sent as `GL-G-1233 E.coli DH5a`, which never equals the `E.coli DH5a` eLab already holds,
+  so the check for one already there never matched and a duplicate was made. The plasmid's own name is
+  now looked for as well; an unmistakable match - one sample of that name, unarchived, carrying no code
+  and linked to nothing here - is used instead of making another, and with two of that name a new one
+  is still made rather than guessing. An adopted sample keeps the name eLab knows it by, and whoever
+  made it there is credited with it here.
+
 ## [0.16.0] - 2026-11-04
 
 ### Added

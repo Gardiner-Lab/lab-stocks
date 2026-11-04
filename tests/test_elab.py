@@ -174,6 +174,21 @@ class FakeElab:
             if f['optionValues'] and f['sampleDataType'] != 'TEXT' and mm['value']:
                 assert mm['value'] in f['optionValues'], (mm['key'], mm['value'])
 
+    def add_sample(self, type_name, name, owner='Someone Else', alt_id=''):
+        """A sample the group already had, as eLab holds it: no code of ours, nothing linked to it."""
+        tid = next(i for i, t in self.types.items() if t['name'] == type_name)
+        i = self._id()
+        self.samples[i] = {'sampleTypeID': tid, 'name': name, 'altID': alt_id, 'archived': False,
+                           'meta': {}, 'storageLayerID': None, 'position': None,
+                           'description': '', 'note': '', 'owner': owner}
+        return i
+
+    def named(self, type_name, name):
+        """Every live sample of that name, however many (live() can hold only one of each code)."""
+        tid = next(i for i, t in self.types.items() if t['name'] == type_name)
+        return [s for s in self.samples.values()
+                if s['sampleTypeID'] == tid and not s['archived'] and s['name'] == name]
+
     def live(self, type_name):
         tid = next(i for i, t in self.types.items() if t['name'] == type_name)
         return {s['altID']: s for s in self.samples.values() if s['sampleTypeID'] == tid and not s['archived']}
@@ -971,3 +986,89 @@ def test_update_from_elab_takes_what_was_changed_there(as_user, world, fake, mon
     assert (s['meta']['Name of host strain'], s['meta']['Biosafety level'], s['position'], s['name']) == ('E.coli DB3.1', 'II', 7, 'pPull v2')
     assert 'Clone: 3' in s['meta']['Remarks']
     assert _ok(lead.post('/api/elab/pull', json={})) == {'looked': 1, 'changed': 0}
+
+
+def test_a_kind_can_be_kept_in_several_of_elabs_sample_types(as_user, world, fake, monkeypatch):
+    """
+    A lab may file the same sort of thing under more than one eLab sample type - a MoClo kit's tubes are
+    glycerol stocks, but eLab keeps them as 'MoClo kit Stock'. All of them are brought over; new samples
+    are only ever made in the first.
+    """
+    monkeypatch.delenv('ELAB_URL')
+    monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    s = _ok(lead.put('/api/elab', json={
+        'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+        'sample_types': {'glycerol': ['Glycerol Stock', 'Primers']},
+        'defaults': {'glycerol': {'Permit': 'IG 99-249', 'Biosafety level': 'I'}}}))
+    assert s['sample_types'] == {'glycerol': 'Glycerol Stock, Primers'}
+
+    c = elab.connection('Gardiner Lab')
+    assert c.type_names('glycerol') == ['Glycerol Stock', 'Primers']
+    assert c.type_name('glycerol') == 'Glycerol Stock', 'new samples go to the first'
+
+    # A name eLab does not have is still refused, wherever it appears in the list.
+    assert 'no sample type called' in lead.put('/api/elab', json={
+        'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+        'sample_types': {'glycerol': ['Glycerol Stock', 'Nothing Like This']}}).get_json()['error']
+
+    # One named twice is kept once.
+    s = _ok(lead.put('/api/elab', json={
+        'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+        'sample_types': {'glycerol': ['Glycerol Stock', 'glycerol stock']}}))
+    assert s['sample_types'] == {'glycerol': 'Glycerol Stock'}
+
+
+def test_naming_one_sample_type_still_works_as_before(as_user, world, fake, monkeypatch):
+    """The old shape - one name, as a plain string - is unchanged."""
+    monkeypatch.delenv('ELAB_URL')
+    monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    s = _ok(lead.put('/api/elab', json={'url': 'uu.elabjournal.com', 'token': 'secret',
+                                        'kinds': ['glycerol'], 'sample_types': {'glycerol': 'glycerol stock'}}))
+    assert s['sample_types'] == {'glycerol': 'Glycerol Stock'}
+    assert elab.connection('Gardiner Lab').type_names('glycerol') == ['Glycerol Stock']
+
+
+def test_a_stock_is_not_made_twice_when_elab_already_has_that_plasmid(as_user, world, fake, monkeypatch):
+    """
+    A sample is sent as 'GL-G-0001 pX', which never equals the 'pX' eLab already holds, so a stock typed
+    in here for a plasmid the group already has was made a second time. One unmistakable match is
+    adopted instead.
+    """
+    monkeypatch.delenv('ELAB_URL'); monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead, ana = as_user('lead'), as_user('ana')
+    _ok(lead.put('/api/elab', json={'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+                                    'sample_types': {'glycerol': 'Glycerol Stock'}}))
+    # eLab already holds this plasmid, under its own bare name, with no code and nothing linked to it.
+    fake.add_sample('Glycerol Stock', 'pAlready')
+    before = len(fake.samples)
+
+    g = _ok(ana.post('/api/glycerol', json={'plasmid_name': 'pAlready', 'host': 'DH5α'}), 201)['record']
+    assert elab.run_once() == {'sent': 1, 'failed': 0}
+    assert len(fake.samples) == before, 'the sample eLab already had was used, not a second one made'
+    assert not fake.named('Glycerol Stock', f"{g['code']} pAlready"), 'no second sample under our own name'
+    assert len(fake.named('Glycerol Stock', 'pAlready')) == 1
+
+
+def test_two_samples_of_that_name_are_left_alone_rather_than_guessed_at(as_user, world, fake, monkeypatch):
+    """Ambiguity is not resolved by guessing: with more than one, a new sample is made as before."""
+    monkeypatch.delenv('ELAB_URL'); monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead, ana = as_user('lead'), as_user('ana')
+    _ok(lead.put('/api/elab', json={'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+                                    'sample_types': {'glycerol': 'Glycerol Stock'}}))
+    fake.add_sample('Glycerol Stock', 'pTwice', owner='A')
+    fake.add_sample('Glycerol Stock', 'pTwice', owner='B')
+    before = len(fake.samples)
+    g = _ok(ana.post('/api/glycerol', json={'plasmid_name': 'pTwice', 'host': 'DH5α'}), 201)['record']
+    assert elab.run_once() == {'sent': 1, 'failed': 0}
+    assert len(fake.samples) == before + 1, 'ambiguous: made as its own, not guessed'
+    assert fake.named('Glycerol Stock', f"{g['code']} pTwice"), 'made under our own name'

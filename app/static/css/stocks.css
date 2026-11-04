@@ -260,3 +260,8 @@ table.data.orders .code-badge { white-space: nowrap; }
 .dymo-export { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .dymo-export select { max-width: 22rem; }
 .dymo-hint { margin-top: 0; }
+
+/* The other eLab sample types a kind is also read from (never written to). */
+.elab-also { margin-top: .35rem; }
+.elab-also .hint { margin-bottom: .15rem; }
+.elab-also-one { display: inline-flex; align-items: center; gap: .2rem; margin: 0 .6rem .15rem 0; font-size: .85rem; }

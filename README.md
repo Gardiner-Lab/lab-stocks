@@ -117,7 +117,8 @@ Beyond a chair group's read-only view, stocks can be shared on purpose.
 
 - **A lab shares a list.** Its lead or lab admin shares one list — glycerol
   stocks, primers, chemicals, antibodies or plant material — or *all* of them,
-  with another lab, or with its own chair group. A share lets the other lab
+  with another lab, with its own chair group, or with any other chair group
+  (every lab in it, including labs that join it later). A share lets the other lab
   **see** the stocks, or **change and delete** them as well. So one lab can hand
   the shared chemicals list to a neighbour to keep up to date, while its primers
   stay its own.

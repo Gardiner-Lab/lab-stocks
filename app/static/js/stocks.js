@@ -336,9 +336,15 @@ const App = {
     if (!this.canShareLab()) return null;
     const lab = this.meta.lab.lab;
     const line = el('p', { class: 'lab-code-line share-line' });
+    const own = !lab.startsWith('user:');                   // an administrator in no lab chooses one to share from
     const draw = async () => {
       let s;
-      try { s = await api('GET', `/shares?lab=${encodeURIComponent(lab)}`); } catch (e) { return; }
+      try { s = await api('GET', `/shares${own ? `?lab=${encodeURIComponent(lab)}` : ''}`); } catch (e) { return; }
+      if (s.needs_lab) {
+        put(line, 'As an administrator you can share any lab\'s stocks. ',
+          el('button', { class: 'btn btn-secondary btn-sm', onclick: () => this.manageShares(null, draw) }, glyph('link'), ' Share stocks…'));
+        return;
+      }
       const n = s.shares.length;
       const chairOn = s.chair_sharing && s.chair_sharing.on;
       put(line,
@@ -355,10 +361,18 @@ const App = {
   /** The dialog for sharing a lab's lists, removing shares, and (for an admin) the chair-group-wide switch. */
   async manageShares(lab, after) {
     let s;
-    try { s = await api('GET', `/shares?lab=${encodeURIComponent(lab)}`); } catch (e) { toast(e.message, 'error'); return; }
+    try { s = await api('GET', `/shares${lab && !lab.startsWith('user:') ? `?lab=${encodeURIComponent(lab)}` : ''}`); } catch (e) { toast(e.message, 'error'); return; }
+    if (s.needs_lab) {
+      // An administrator in no lab: which lab's stocks to share.
+      formModal({ title: 'Which lab?', label: 'Open', intro: 'Choose the lab whose stocks you are sharing.',
+        fields: [{ name: 'lab', label: 'Lab', type: 'select', options: s.labs }],
+        submit: async (v) => { this.manageShares(v.lab, after); } });
+      return;
+    }
     const kindName = { glycerol: 'Glycerol stocks', primer: 'Primers', chemical: 'Chemicals',
       antibody: 'Antibodies', material: 'Plant material', all: 'Everything' };
-    const targetName = (sh) => (sh.target_kind === 'chair' ? `your chair group${s.group ? ` (${s.group.name})` : ''}` : sh.target);
+    const targetName = (sh) => (sh.target_kind === 'chair' ? `your chair group${s.group ? ` (${s.group.name})` : ''}`
+      : sh.target_kind === 'group' ? `the chair group ${sh.target_name || sh.target}` : sh.target);
 
     modal({
       title: `Share ${lab}'s stocks`, wide: true,
@@ -378,11 +392,19 @@ const App = {
         paint();
 
         // Whom to share with: a lab, or the chair group.
+        const groups = s.other_groups || [];
         const targetKind = el('select', {}, el('option', { value: 'lab' }, 'another lab'),
-          s.group ? el('option', { value: 'chair' }, `your chair group (${s.group.name})`) : null);
+          s.group ? el('option', { value: 'chair' }, `your chair group (${s.group.name})`) : null,
+          groups.length ? el('option', { value: 'group' }, 'another chair group') : null);
         const labSel = el('select', {}, (s.other_labs || []).map((l) => el('option', { value: l }, l)));
         const labField = el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Lab'), labSel);
-        targetKind.addEventListener('change', () => { labField.hidden = targetKind.value !== 'lab'; });
+        const groupSel = el('select', {}, groups.map((g) => el('option', { value: g.id },
+          `${g.name} (${g.labs.length ? g.labs.join(', ') : 'no labs yet'})`)));
+        const groupField = el('label', { class: 'field', hidden: true }, el('span', { class: 'field-label' }, 'Chair group'), groupSel);
+        targetKind.addEventListener('change', () => {
+          labField.hidden = targetKind.value !== 'lab';
+          groupField.hidden = targetKind.value !== 'group';
+        });
         const kindSel = el('select', {}, el('option', { value: 'all' }, 'Everything'),
           s.kinds.map((k) => el('option', { value: k }, kindName[k])));
         const editSel = el('select', {}, el('option', { value: '' }, 'to see only'), el('option', { value: '1' }, 'to see and change'));
@@ -394,13 +416,14 @@ const App = {
           el('div', { class: 'share-form' },
             el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'List'), kindSel),
             el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'With'), targetKind),
-            labField,
+            labField, groupField,
             el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'They may'), editSel),
             el('button', { class: 'btn btn-primary', onclick: async (e) => {
               e.currentTarget.disabled = true;
               try {
                 s = await api('POST', '/shares', { lab, kind: kindSel.value, target_kind: targetKind.value,
-                  target: targetKind.value === 'lab' ? labSel.value : '', can_edit: !!editSel.value });
+                  target: targetKind.value === 'lab' ? labSel.value : targetKind.value === 'group' ? groupSel.value : '',
+                  can_edit: !!editSel.value });
               } catch (err) { toast(err.message, 'error'); e.currentTarget.disabled = false; return; }
               paint(); after?.();
               e.currentTarget.disabled = false;

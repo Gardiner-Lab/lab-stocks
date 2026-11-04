@@ -5,6 +5,18 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-04
+
+### Added
+- **Sharing with another chair group.** A lab can now share a list, or everything, with any other chair group as
+  well as with a single lab or its own chair group: every lab in that group sees it (or may change it), and a lab
+  that joins the group later is covered without a new share, as one that leaves is not. The dialog gains
+  *another chair group*, listing each group with its labs.
+- An administrator who is in no lab is asked which lab's stocks to share, instead of the dialog failing.
+
+### Fixed
+- The lab picker in the sharing dialog could not be hidden when sharing with a chair group.
+
 ## [0.15.0] - 2026-11-04
 
 ### Added

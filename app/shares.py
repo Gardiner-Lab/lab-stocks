@@ -7,7 +7,8 @@ may change — a lab's stocks:
 
 * **A lab shares a list.** Its lead or lab admin shares one list (glycerol
   stocks, primers, chemicals, antibodies or plant material) or *all* of them,
-  with another lab, or with its own chair group. The share is read-only, or lets
+  with another lab, with its own chair group, or with any other chair group
+  (every lab in it, as the group stands). The share is read-only, or lets
   the other lab change and delete the records too. Kept in `shares`.
 
 * **A whole chair group shares everything.** An administrator turns on sharing
@@ -39,7 +40,8 @@ from app.people import Person
 
 # The stock lists that can be shared; 'all' means every one of them.
 KINDS = ('glycerol', 'primer', 'chemical', 'antibody', 'material')
-TARGET_KINDS = ('lab', 'chair')
+# Whom a share is for: one named 'lab'; the owner's own 'chair' group; or any other chair 'group', by its id.
+TARGET_KINDS = ('lab', 'chair', 'group')
 
 
 # --- resolving: which labs' stocks a person sees or may change -------------------
@@ -90,6 +92,10 @@ def _granted(person: Person, conn, want_edit: bool) -> Dict[str, Set[str]]:
         elif row['target_kind'] == 'chair':
             gid = chairs.group_id(owner)               # the owner's own chair group
             if gid is None or f'chair:{gid}' not in me:
+                continue
+        elif row['target_kind'] == 'group':
+            # Another chair group, named by its id: every lab in it, as the group stands now.
+            if f"chair:{row['target']}" not in me:
                 continue
         else:
             continue
@@ -176,6 +182,11 @@ def list_for(person: Person, lab: Optional[str] = None) -> dict:
     group shares everything. Also the labs it could share with (its chair group's
     other labs, and every other lab), for the form.
     """
+    if person.is_admin and not (lab or '').strip():
+        from app.records import labs_of
+        if labs_of(person)[0].startswith('user:'):
+            # An administrator in no lab shares on a lab's behalf: the page asks which.
+            return {'needs_lab': True, 'labs': chairs.all_labs()}
     owner = _owner_lab(person, lab)
     group = chairs.info(person, owner)['group']
     with connect() as conn:
@@ -184,10 +195,16 @@ def list_for(person: Person, lab: Optional[str] = None) -> dict:
         gid = chairs.group_id(owner)
         optin = conn.execute('SELECT * FROM chair_sharing WHERE chair_group_id = ?',
                              (str(gid),)).fetchone() if gid is not None else None
+    groups = chairs.all_groups()
+    names = {g['id']: g['name'] for g in groups}
     for r in rows:
         r['can_edit'] = bool(r['can_edit'])
+        if r['target_kind'] == 'group':
+            r['target_name'] = names.get(str(r['target']), r['target'])     # a group since removed keeps its id
     others = [l for l in chairs.all_labs() if l.casefold() != owner.casefold()]
+    own_gid = str(chairs.group_id(owner)) if chairs.group_id(owner) is not None else None
     return {'lab': owner, 'shares': rows, 'kinds': list(KINDS), 'other_labs': others,
+            'other_groups': [g for g in groups if g['id'] != own_gid],
             'group': group,
             'chair_sharing': {'on': optin is not None, 'can_edit': bool(optin['can_edit']) if optin else False}
                              if group else None,
@@ -196,19 +213,29 @@ def list_for(person: Person, lab: Optional[str] = None) -> dict:
 
 def create(person: Person, lab: Optional[str], kind: str, target_kind: str, target: str,
            can_edit: bool) -> dict:
-    """Share a lab's list (or all) with another lab or its chair group."""
+    """Share a lab's list (or all) with another lab, its own chair group, or any other chair group."""
     owner = _owner_lab(person, lab)
     kind = (kind or 'all').strip().lower()
     if kind != 'all' and kind not in KINDS:
         raise ValueError(f'kind must be all or one of {", ".join(KINDS)}')
     target_kind = (target_kind or 'lab').strip().lower()
     if target_kind not in TARGET_KINDS:
-        raise ValueError('target_kind must be lab or chair')
+        raise ValueError('target_kind must be lab, chair or group')
     target = (target or '').strip()
     if target_kind == 'chair':
         if chairs.group_id(owner) is None:
             raise ValueError('This lab is not in a chair group')
         target = ''
+    elif target_kind == 'group':
+        # Another chair group, by id (its name is accepted too): every lab in it, now and later.
+        found = next((g for g in chairs.all_groups()
+                      if g['id'] == target or g['name'].casefold() == target.casefold()), None)
+        if found is None:
+            raise ValueError('Choose a chair group to share with')
+        own_gid = chairs.group_id(owner)
+        if own_gid is not None and str(own_gid) == found['id']:
+            raise ValueError("That is this lab's own chair group: share with \"your chair group\" instead")
+        target = found['id']
     else:
         if not target:
             raise ValueError('Choose a lab to share with')

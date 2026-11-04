@@ -263,8 +263,9 @@ CREATE TABLE IF NOT EXISTS lab_codes (
 --   owner_lab    whose stocks these are
 --   kind         which list: 'glycerol', 'primer', 'chemical', 'antibody',
 --                'material', or 'all' for every list
---   target_kind  'lab' (one named lab) or 'chair' (the owner's own chair group)
---   target       the lab's name (target_kind 'lab'); '' for 'chair'
+--   target_kind  'lab' (one named lab), 'chair' (the owner's own chair group), or
+--                'group' (any other chair group, every lab in it)
+--   target       the lab's name ('lab'); the suite's chair group id ('group'); '' for 'chair'
 --   can_edit     0 the other lab sees them; 1 it may change and delete them too
 -- The records themselves still belong to owner_lab (eLab is sent by owner_lab,
 -- with its own token); a share only widens who sees or changes them.

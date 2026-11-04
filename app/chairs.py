@@ -51,6 +51,14 @@ def labs_in(group_id) -> List[str]:
                                      (group_id,))]
 
 
+def all_groups() -> List[dict]:
+    """Every chair group in the suite with its labs: [{'id', 'name', 'labs'}], for choosing one to share with."""
+    if not _known():
+        return []
+    return [{'id': str(r['id']), 'name': r['name'], 'labs': labs_in(r['id'])}
+            for r in _read(_path(), 'SELECT id, name FROM chair_groups ORDER BY name COLLATE NOCASE')]
+
+
 def all_labs() -> List[str]:
     """Every lab in the suite, by name, for choosing one to share with."""
     return [r['name'] for r in _read(_path(), 'SELECT name FROM labs ORDER BY name COLLATE NOCASE')]

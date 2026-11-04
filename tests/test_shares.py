@@ -217,3 +217,80 @@ def test_the_share_form_lists_the_other_labs_to_share_with(as_user, world):
     assert out['kinds'] == ['glycerol', 'primer', 'chemical', 'antibody', 'material']
     assert out['can_set_chair'] is False
     assert _ok(as_user('boss').get('/api/shares?lab=Gardiner%20Lab'))['can_set_chair'] is True
+
+
+def _third_lab_in_its_own_group(world, group='Microbiology', extra_lab=None):
+    """Far Lab (3), led by fay, in a chair group of its own; optionally a fourth lab (4, led by gil) in it too."""
+    import sqlite3
+    conn = sqlite3.connect(world['paths']['suite'])
+    conn.execute("INSERT INTO labs VALUES (3, 'Far Lab')")
+    conn.execute("INSERT INTO lab_members (username, lab_id, role, lab_admin, joined_at) VALUES ('fay', 3, 'lab_lead', 1, '1')")
+    if extra_lab:
+        conn.execute(f"INSERT INTO labs VALUES (4, '{extra_lab}')")
+        conn.execute("INSERT INTO lab_members (username, lab_id, role, lab_admin, joined_at) VALUES ('gil', 4, 'member', 0, '1')")
+    conn.commit()
+    conn.close()
+
+
+def test_a_lab_shares_with_another_chair_group_as_a_whole(as_user, world):
+    """target_kind 'group': every lab of that other chair group, including one that joins it later."""
+    _lab_admins(world, 'lead', 'olga')
+    _third_lab_in_its_own_group(world)
+    _chair_groups(world, l1='Plant Biology', l2='Plant Biology', l3='Microbiology')
+    lead, ana, zoe, fay = (as_user(u) for u in ('lead', 'ana', 'zoe', 'fay'))
+    chem = _ok(ana.post('/api/chemicals', json={'name': 'Ethanol'}), 201)['record']
+    primer = _ok(ana.post('/api/primers', json={'name': 'M13', 'sequence': 'GTAAAACGACGGCCAGT'}), 201)['record']
+
+    form = _ok(lead.get('/api/shares'))
+    # The other chair groups to choose from: not the lab's own.
+    assert [g['name'] for g in form['other_groups']] == ['Microbiology']
+    assert form['other_groups'][0]['labs'] == ['Far Lab']
+
+    out = _ok(lead.post('/api/shares', json={'kind': 'chemical', 'target_kind': 'group',
+                                             'target': 'microbiology', 'can_edit': True}))
+    assert out['shares'][0]['target_kind'] == 'group' and out['shares'][0]['target_name'] == 'Microbiology'
+
+    # Far Lab, in that group, sees and may change the chemical; the primer was not shared.
+    seen = {c['code']: c for c in _ok(fay.get('/api/chemicals'))['chemicals']}
+    assert seen[chem['code']]['mine'] and seen[chem['code']]['shared']
+    assert primer['code'] not in _codes(_ok(fay.get('/api/primers')), 'primers')
+    _ok(fay.put(f"/api/chemicals/{chem['code']}", json={'room': 'Far store'}))
+
+    # Not the owner's own group (use "your chair group"), and not a group that does not exist.
+    assert lead.post('/api/shares', json={'kind': 'chemical', 'target_kind': 'group',
+                                          'target': 'plant biology'}).status_code == 400
+    assert lead.post('/api/shares', json={'kind': 'chemical', 'target_kind': 'group',
+                                          'target': 'nonsense'}).status_code == 400
+
+    # A lab that joins the group later is covered without a new share; one that leaves is not.
+    _chair_groups(world, l2='Microbiology')
+    assert chem['code'] in _codes(_ok(zoe.get('/api/chemicals')), 'chemicals')
+    _chair_groups(world, l3=None)
+    assert fay.get(f"/api/chemicals/{chem['code']}").status_code == 404
+
+
+def test_group_shares_cover_a_group_of_several_labs_and_stop_when_removed(as_user, world):
+    _lab_admins(world, 'lead', 'olga')
+    _third_lab_in_its_own_group(world, extra_lab='Gil Lab')
+    _chair_groups(world, l1='Plant Biology', l2='Plant Biology', l3='Microbiology', l4='Microbiology')
+    lead, ana, fay, gil = (as_user(u) for u in ('lead', 'ana', 'fay', 'gil'))
+    chem = _ok(ana.post('/api/chemicals', json={'name': 'Acetone'}), 201)['record']
+    out = _ok(lead.post('/api/shares', json={'kind': 'all', 'target_kind': 'group', 'target': 'microbiology'}))
+    # Both labs of the other group see it, to see only.
+    for who in (fay, gil):
+        seen = {c['code']: c for c in _ok(who.get('/api/chemicals'))['chemicals']}
+        assert chem['code'] in seen and not seen[chem['code']]['mine']
+        assert who.put(f"/api/chemicals/{chem['code']}", json={'room': 'x'}).status_code == 403
+    _ok(lead.delete(f"/api/shares/{out['shares'][0]['id']}"))
+    assert gil.get(f"/api/chemicals/{chem['code']}").status_code == 404
+
+
+def test_an_administrator_in_no_lab_chooses_the_lab_to_share_from(as_user, world):
+    """boss belongs to no lab: the form asks which, then shares on that lab's behalf."""
+    _lab_admins(world, 'lead', 'olga')
+    boss, zoe, ana = (as_user(u) for u in ('boss', 'zoe', 'ana'))
+    asked = _ok(boss.get('/api/shares'))
+    assert asked['needs_lab'] and {'Gardiner Lab', 'Other Lab'} <= set(asked['labs'])
+    chem = _ok(ana.post('/api/chemicals', json={'name': 'Ethanol'}), 201)['record']
+    _ok(boss.post('/api/shares', json={'lab': 'Gardiner Lab', 'kind': 'chemical', 'target': 'Other Lab'}))
+    assert chem['code'] in _codes(_ok(zoe.get('/api/chemicals')), 'chemicals')

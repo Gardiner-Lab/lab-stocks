@@ -44,6 +44,7 @@ a { color: var(--primary); }
     padding: .4rem .6rem; border: 1px solid var(--border); border-radius: .4rem; }
 .share-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; margin-bottom: .5rem; }
 .share-form .field { margin-bottom: 0; }
+.field[hidden] { display: none; }       /* .field is flex, which would otherwise override hidden */
 .chair-share { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--border); }
 .chair-share h3 { margin: .1rem 0 .4rem; }
 

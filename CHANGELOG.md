@@ -5,6 +5,19 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-04
+
+### Fixed
+- **A sample brought over into another lab is linked to the sample it came from.** 0.18.0 files a
+  sample under the lab of whoever made it, but the linking still looked only among the connecting
+  lab's records, so those came over with no link at all - and the next lab to connect would have sent
+  them to eLab again as new copies.
+- **Everyone who may see a stock now sees where it is in eLab**, not only the lab that owns it: a stock
+  shared with another lab is no use if the tube it came from cannot be found. Writing to eLab is still
+  the owning lab's alone, and the link carries nothing but the sample and its state.
+- A stock whose lab never connected to eLab still shows the sample it was brought over from, instead of
+  showing nothing at all.
+
 ## [0.18.0] - 2026-11-04
 
 ### Added

@@ -1133,3 +1133,57 @@ def test_the_owner_lab_list_is_offered_with_who_actually_has_stocks(as_user, wor
     # A lab that does not exist is refused.
     assert 'No lab called' in lead.put('/api/elab/owner-labs',
                                       json={'owner_labs': {'Marie Curie': 'Nowhere Lab'}}).get_json()['error']
+
+
+def test_a_sample_filed_into_another_lab_is_still_linked_to_its_sample(as_user, world, fake, monkeypatch):
+    """
+    Bringing a sample over files it under the lab of whoever made it, which is not the lab doing the
+    bringing over. Linking it looked only among the connecting lab's records, so those came over with
+    no link at all - and the next lab to connect would have sent them to eLab again as new.
+    """
+    monkeypatch.delenv('ELAB_URL'); monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    _ok(lead.put('/api/elab', json={'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+                                    'sample_types': {'glycerol': 'Glycerol Stock'}}))
+    elab.set_owner_labs('lead', {'Someone Else': 'Other Lab'})
+    fake.add_sample('Glycerol Stock', 'pElsewhere', owner='Someone Else')
+    sid = next(i for i, s in fake.samples.items() if s['name'] == 'pElsewhere')
+
+    made = _ok(lead.post('/api/elab/import/glycerol', json={'ids': [sid]}), 201)
+    assert made['made'] == 1 and made['linked'] == 1, 'brought over and linked, not left loose'
+
+    with db.connect() as conn:
+        row = conn.execute("SELECT id, lab FROM glycerol WHERE plasmid_name = 'pElsewhere'").fetchone()
+        link = conn.execute('SELECT sample_id, elab_url FROM elab_links WHERE record_id = ?', (row['id'],)).fetchone()
+    assert row['lab'] == 'Other Lab'
+    assert link is not None and link['sample_id'] == sid, 'linked to the sample it came from'
+
+
+def test_anyone_who_sees_a_stock_sees_where_it_is_in_elab(as_user, world, fake, monkeypatch):
+    """
+    A stock shared with another lab is no use if the tube it came from cannot be found. The eLab link
+    is shown to whoever may see the stock, not only to the lab that owns it; writing to eLab is still
+    the owning lab's alone.
+    """
+    monkeypatch.delenv('ELAB_URL'); monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead, zoe = as_user('lead'), as_user('zoe')
+    _ok(lead.put('/api/elab', json={'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+                                    'sample_types': {'glycerol': 'Glycerol Stock'}}))
+    g = _ok(as_user('ana').post('/api/glycerol', json={'plasmid_name': 'pSeen', 'host': 'DH5α'}), 201)['record']
+    assert elab.run_once() == {'sent': 1, 'failed': 0}
+
+    # Its own lab sees the link.
+    mine = _ok(lead.get(f"/api/glycerol/{g['code']}"))['record']
+    assert mine['elab'] and mine['elab']['sample_id'] and mine['elab']['url']
+
+    # Another lab, once the list is shared with it, sees the same link though it may not change the stock.
+    _ok(lead.post('/api/shares', json={'kind': 'all', 'target_kind': 'lab', 'target': 'Other Lab',
+                                       'can_edit': False}))
+    theirs = _ok(zoe.get(f"/api/glycerol/{g['code']}"))['record']
+    assert theirs['mine'] is False, 'they may look, not change'
+    assert theirs['elab'] and theirs['elab']['sample_id'] == mine['elab']['sample_id']
+    assert theirs['elab']['url'] == mine['elab']['url']

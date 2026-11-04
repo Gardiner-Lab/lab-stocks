@@ -935,10 +935,16 @@ def record_state(kind: str, lab: str, record_id: str) -> Optional[dict]:
     kind not copied.
     """
     c = connection(lab)
+    link = _links(kind).get(record_id)
     if c is None or kind not in c.kinds:
+        # This lab does not copy to eLab itself, but the record may still have come from there - one
+        # brought over becomes the stock of whoever made it, whose lab may never have connected. The
+        # sample it came from is still worth showing, and where it is.
+        if link and link['sample_id'] and link['elab_url']:
+            return {'sample_id': link['sample_id'], 'url': sample_url(link['elab_url'], link['sample_id']),
+                    'state': 'brought over from eLab', 'error': None, 'synced_at': link['synced_at']}
         return None
     item = next((i for i in items(kind, lab, c) if i.id == record_id), None)
-    link = _links(kind).get(record_id)
     if link and link['elab_url'] != c.url:
         link = None
     out = {'sample_id': None, 'url': None, 'state': 'not sent', 'error': None, 'synced_at': None}
@@ -989,6 +995,17 @@ def paused():
         yield
 
 
+def _labs_of_records(kind: str, record_ids: List[str]) -> set:
+    """The labs these records belong to: a sample brought over may become another lab's stock."""
+    table = {'glycerol': 'glycerol', 'material': 'material'}.get(kind)
+    if not table or not record_ids:
+        return set()
+    with connect() as conn:
+        marks = ', '.join('?' * len(record_ids))
+        return {r[0] for r in conn.execute(f'SELECT DISTINCT lab FROM {table} WHERE id IN ({marks})',
+                                           list(record_ids)) if r[0]}
+
+
 def adopt(lab: str, kind: str, pairs: List[Tuple[str, int, str]], opener=None) -> int:
     """
     Links records just brought over from eLab to their samples there: (record id, sample id, its name in eLab).
@@ -998,7 +1015,12 @@ def adopt(lab: str, kind: str, pairs: List[Tuple[str, int, str]], opener=None) -
     if c is None:
         raise ValueError('Connect the lab to eLab first')
     st = sample_type(Client(c.url, c.token, opener), c.type_name(kind))
-    by_id = {i.id: i for i in items(kind, lab, c)}
+    # The records may belong to other labs: a sample brought over becomes the stock of whoever made it
+    # in eLab, so looking only among the connecting lab's would leave those unlinked, and the next lab
+    # to connect would send them to eLab again as new.
+    by_id = {}
+    for other in _labs_of_records(kind, [rid for rid, _, _ in pairs]) or {lab}:
+        by_id.update({i.id: i for i in items(kind, other, c)})
     linked = _linked_samples()
     done = 0
     for record_id, sample_id, name in pairs:

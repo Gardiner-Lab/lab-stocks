@@ -587,8 +587,10 @@ def create_primers(person):
 def get_stock(person, collection, ident):
     record = records.detail(person, _kind(collection), ident)
     record['mentions'] = sources.notebook_mentions(person, record['code'])
-    # Where it is in eLab, with a link to its sample there: for the lab's own.
-    record['elab'] = elab.record_state(record['kind'], record['lab'], record['id']) if record['mine'] else None
+    # Where it is in eLab, with a link to its sample there. Anyone who may see the stock sees this: a
+    # shared stock is no use if its tube in eLab cannot be found. Only the lab that owns it writes to
+    # eLab, so this is a window, not a handle - and it carries nothing but the sample and its state.
+    record['elab'] = elab.record_state(record['kind'], record['lab'], record['id'])
     return jsonify({'record': record})
 
 

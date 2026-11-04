@@ -1045,6 +1045,58 @@ def others_by() -> str:
     return os.environ.get('ELAB_OTHERS_BY', '').strip() or 'admin'
 
 
+def owner_labs(conn=None) -> Dict[str, str]:
+    """Which lab each of eLab's owners belongs to, by their name there (folded, as eLab writes it)."""
+    with contextlib.nullcontext(conn) if conn else connect() as conn:
+        return {r['elab_name']: r['lab'] for r in conn.execute('SELECT elab_name, lab FROM elab_owner_labs')}
+
+
+def owner_lab(owner: str, conn=None) -> Optional[str]:
+    """
+    The lab whose stock a sample of this person's becomes. None when nobody has said: the sample then
+    stays with the lab doing the bringing over, as it always did.
+    """
+    name = (owner or '').strip()
+    if not name:
+        return None
+    folded = name.casefold()
+    return next((lab for who, lab in owner_labs(conn).items() if who.casefold() == folded), None)
+
+
+def set_owner_labs(by: str, people: Dict[str, str]) -> Dict[str, str]:
+    """
+    Say which lab each eLab owner belongs to. A name given no lab is forgotten rather than kept empty,
+    so the list holds only what someone has actually decided.
+    """
+    with connect() as conn:
+        for who, lab in people.items():
+            who = (who or '').strip()
+            if not who:
+                continue
+            if (lab or '').strip():
+                conn.execute('INSERT INTO elab_owner_labs (elab_name, lab, set_by) VALUES (?, ?, ?) '
+                             'ON CONFLICT(elab_name) DO UPDATE SET lab = excluded.lab, set_by = excluded.set_by, '
+                             'set_at = CURRENT_TIMESTAMP', (who, lab.strip(), by))
+            else:
+                conn.execute('DELETE FROM elab_owner_labs WHERE elab_name = ?', (who,))
+    return owner_labs()
+
+
+def owners_here() -> List[Dict[str, Any]]:
+    """Every owner in eLab that the stocks here name, with how many are theirs: what needs a lab."""
+    out: Dict[str, Dict[str, Any]] = {}
+    with connect() as conn:
+        for table in ('glycerol', 'material'):
+            for r in conn.execute(f'SELECT elab_owner, lab, COUNT(*) n FROM {table} '
+                                  "WHERE deleted_at IS NULL AND IFNULL(elab_owner, '') != '' "
+                                  'GROUP BY elab_owner, lab'):
+                row = out.setdefault(r['elab_owner'], {'owner': r['elab_owner'], 'stocks': 0, 'labs': set()})
+                row['stocks'] += r['n']
+                row['labs'].add(r['lab'])
+    return sorted(({**r, 'labs': sorted(r['labs'])} for r in out.values()),
+                  key=lambda r: (-r['stocks'], r['owner'].casefold()))
+
+
 def lab_people(lab: str, conn=None) -> Dict[str, Tuple[str, str]]:
     """The lab's own people in eLab: owner (casefolded) -> (owner as eLab has it, their account here or '')."""
     with contextlib.ExitStack() as stack:

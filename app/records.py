@@ -606,11 +606,18 @@ def create_material(person: Person, items: List[dict], shared: dict, lab: Option
     return made
 
 
-def create(person: Person, kind: str, data: dict, owner: Optional[str] = None) -> str:
-    return create_noting(person, kind, data, owner)[0]
+def _any_lab(chosen: Optional[str]) -> Optional[str]:
+    """A lab of the suite, whosever it is, as it is written there; None when there is no such lab."""
+    from app import chairs
+    name = str(chosen or '').strip()
+    return next((n for n in chairs.all_labs() if n.casefold() == name.casefold()), None) if name else None
 
 
-def create_noting(person: Person, kind: str, data: dict, owner: Optional[str] = None):
+def create(person: Person, kind: str, data: dict, owner: Optional[str] = None, any_lab: bool = False) -> str:
+    return create_noting(person, kind, data, owner, any_lab)[0]
+
+
+def create_noting(person: Person, kind: str, data: dict, owner: Optional[str] = None, any_lab: bool = False):
     """
     Makes a record; gives its id, and what it did to the order list (a chemical made out), or None.
     owner: a glycerol stock brought over from eLab, its owner there, who made it (the history says who
@@ -619,7 +626,11 @@ def create_noting(person: Person, kind: str, data: dict, owner: Optional[str] = 
     fields = FIELDS[kind](data, partial=False)
     if kind == 'glycerol':
         fields['source'] = 'elab' if owner is not None else 'sequencing' if data.get('source') == 'sequencing' else 'manual'
-    lab = lab_of(person, data.get('lab'), strict=True)
+    # Brought over from a shared eLab group, a sample becomes the stock of the lab whoever made it
+    # belongs to, which is deliberately not the lab of the person doing the bringing over. Only that
+    # path passes a lab outside their own, and only a real lab is accepted.
+    lab = _any_lab(data.get('lab')) if any_lab else None
+    lab = lab or lab_of(person, data.get('lab'), strict=not any_lab)
     with connect() as conn:
         record_id = secrets.token_hex(12)
         code = _code(conn, kind, lab)

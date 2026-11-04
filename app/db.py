@@ -251,6 +251,17 @@ CREATE TABLE IF NOT EXISTS elab_people (
     PRIMARY KEY (lab, elab_name)
 );
 
+-- Which lab each of eLab's owners belongs to. A shared eLab group holds several labs' samples, and
+-- whoever made a sample there decides whose stock it becomes here; without this every sample brought
+-- over became the connecting lab's, however little it had to do with them. One row to a person, since
+-- a person is in one lab as far as their samples are concerned.
+CREATE TABLE IF NOT EXISTS elab_owner_labs (
+    elab_name TEXT PRIMARY KEY COLLATE NOCASE,
+    lab TEXT NOT NULL COLLATE NOCASE,
+    set_by TEXT,
+    set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS lab_codes (
     lab TEXT PRIMARY KEY,
     code TEXT UNIQUE NOT NULL,

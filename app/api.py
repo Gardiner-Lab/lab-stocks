@@ -232,6 +232,38 @@ def _lab_people(lab: str) -> dict:
                                key=str.casefold)}
 
 
+@api.get('/elab/owner-labs')
+@signed_in
+def elab_owner_labs(person):
+    """
+    Which lab each of eLab's owners belongs to, with the owners the group actually has and the labs to
+    choose from, so the list can be filled in.
+    """
+    _elab_admin_lab(person)
+    # The owners the stocks here actually name, which is what needs deciding; eLab is not asked, so the
+    # list is instant and the screen works whether or not eLab is answering.
+    return jsonify({'owner_labs': elab.owner_labs(), 'owners': elab.owners_here(),
+                    'labs': chairs.all_labs()})
+
+
+@api.put('/elab/owner-labs')
+@signed_in
+def elab_set_owner_labs(person):
+    """
+    Says which lab each eLab owner belongs to ({owner in eLab: lab}), so a sample brought over becomes
+    that lab's stock rather than the connecting lab's. A name given no lab is forgotten.
+    """
+    _elab_admin_lab(person)
+    chosen = _body().get('owner_labs')
+    if not isinstance(chosen, dict):
+        raise ValueError("Give each eLab owner's lab")
+    known = {l.casefold() for l in chairs.all_labs()}
+    wrong = sorted({str(v) for v in chosen.values() if v and str(v).casefold() not in known})
+    if wrong:
+        raise ValueError(f"No lab called {', '.join(wrong)}")
+    return jsonify({'owner_labs': elab.set_owner_labs(person.username, chosen)})
+
+
 @api.get('/elab/people')
 @signed_in
 def elab_people(person):
@@ -336,6 +368,10 @@ def elab_import_glycerol(person):
         raise ValueError('Choose the samples to bring over')
     elab.owners_as_makers(lab, 'glycerol')
     healed, chosen = _here_already(lab, 'glycerol', chosen)
+    # Whose stock each sample becomes: the lab of whoever made it in eLab, when that is known. A shared
+    # group holds several labs' samples, and without this they all became the connecting lab's.
+    owner_labs = elab.owner_labs()
+    folded = {who.casefold(): where for who, where in owner_labs.items()}
     data = []
     for s in chosen:
         meta = s['meta']
@@ -343,7 +379,8 @@ def elab_import_glycerol(person):
         system = str(meta.get('Host system') or '').split(',')[0].strip()
         named = [p for p in sources.plasmids(person, s['name'], limit=50) if p['name'].strip().casefold() == s['name'].casefold()]
         data.append({
-            'lab': lab, 'plasmid_name': s['name'], 'plasmid_id': named[0]['id'] if len(named) == 1 else '',
+            'lab': folded.get((s.get('owner') or '').strip().casefold(), lab),
+            'plasmid_name': s['name'], 'plasmid_id': named[0]['id'] if len(named) == 1 else '',
             'host': meta.get('Name of host strain', ''), 'selection': meta.get('Bacterial Markers', ''),
             'permit': meta.get('Permit', ''), 'biosafety': _choice(meta.get('Biosafety level'), records.BIOSAFETY),
             'host_system': 'other' if 'other' in system.casefold() else _choice(system, records.HOST_SYSTEMS),
@@ -357,7 +394,7 @@ def elab_import_glycerol(person):
     with elab.paused():         # made and linked a few at a time, before any round can send them as new
         linked += elab.adopt(lab, 'glycerol', healed)
         for start in range(0, len(data), BATCH):
-            some = [records.create(person, 'glycerol', d, owner=s['owner'])
+            some = [records.create(person, 'glycerol', d, owner=s['owner'], any_lab=True)
                     for d, s in zip(data[start:start + BATCH], chosen[start:start + BATCH])]
             linked += elab.adopt(lab, 'glycerol', [(rid, s['id'], s['name']) for rid, s in zip(some, chosen[start:start + BATCH])])
             made += some

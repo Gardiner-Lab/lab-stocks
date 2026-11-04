@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from app import elab
+from app import db, elab
 
 
 def _ok(r, code=200):
@@ -1072,3 +1072,64 @@ def test_two_samples_of_that_name_are_left_alone_rather_than_guessed_at(as_user,
     assert elab.run_once() == {'sent': 1, 'failed': 0}
     assert len(fake.samples) == before + 1, 'ambiguous: made as its own, not guessed'
     assert fake.named('Glycerol Stock', f"{g['code']} pTwice"), 'made under our own name'
+
+
+def test_a_sample_becomes_the_lab_of_whoever_made_it_in_elab(as_user, world, fake, monkeypatch):
+    """
+    A shared eLab group holds several labs' samples. Whose stock one becomes here follows whoever made
+    it there, once someone has said which lab that person is in; an owner nobody has placed stays with
+    the lab doing the bringing over, as before.
+    """
+    monkeypatch.delenv('ELAB_URL'); monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    _ok(lead.put('/api/elab', json={'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+                                    'sample_types': {'glycerol': 'Glycerol Stock'}}))
+
+    assert elab.owner_lab('Someone Else') is None, 'nobody has said yet'
+    elab.set_owner_labs('lead', {'Someone Else': 'Other Lab', 'Nobody At All': ''})
+    assert elab.owner_lab('Someone Else') == 'Other Lab'
+    assert elab.owner_lab('someone else') == 'Other Lab', 'however it is written'
+    assert elab.owner_lab('Nobody At All') is None, 'given no lab, it is forgotten rather than kept empty'
+
+    # Brought over: it is Other Lab's stock, not the connecting lab's.
+    fake.add_sample('Glycerol Stock', 'pTheirs', owner='Someone Else')
+    sid = next(i for i, s in fake.samples.items() if s['name'] == 'pTheirs')
+    made = _ok(lead.post('/api/elab/import/glycerol', json={'ids': [sid]}), 201)
+    assert made['made'] == 1
+    with db.connect() as conn:
+        row = conn.execute("SELECT lab, elab_owner FROM glycerol WHERE plasmid_name = 'pTheirs'").fetchone()
+    assert row['lab'] == 'Other Lab' and row['elab_owner'] == 'Someone Else'
+
+
+def test_an_owner_nobody_has_placed_stays_with_the_connecting_lab(as_user, world, fake, monkeypatch):
+    monkeypatch.delenv('ELAB_URL'); monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead = as_user('lead')
+    _ok(lead.put('/api/elab', json={'url': 'uu.elabjournal.com', 'token': 'secret', 'kinds': ['glycerol'],
+                                    'sample_types': {'glycerol': 'Glycerol Stock'}}))
+    fake.add_sample('Glycerol Stock', 'pUnplaced', owner='Nobody Knows')
+    sid = next(i for i, s in fake.samples.items() if s['name'] == 'pUnplaced')
+    _ok(lead.post('/api/elab/import/glycerol', json={'ids': [sid]}), 201)
+    with db.connect() as conn:
+        row = conn.execute("SELECT lab FROM glycerol WHERE plasmid_name = 'pUnplaced'").fetchone()
+    assert row['lab'] == 'Gardiner Lab'
+
+
+def test_the_owner_lab_list_is_offered_with_who_actually_has_stocks(as_user, world, fake, monkeypatch):
+    monkeypatch.delenv('ELAB_URL'); monkeypatch.delenv('ELAB_TOKEN')
+    monkeypatch.setattr(elab.urllib.request, 'urlopen', fake)
+    _lab_admin(world)
+    lead, ana = as_user('lead'), as_user('ana')
+    g = _ok(ana.post('/api/glycerol', json={'plasmid_name': 'pX', 'host': 'DH5α'}), 201)['record']
+    with db.connect() as conn:
+        conn.execute("UPDATE glycerol SET elab_owner = 'Marie Curie' WHERE code = ?", (g['code'],))
+    s = _ok(lead.get('/api/elab/owner-labs'))
+    assert [o['owner'] for o in s['owners']] == ['Marie Curie']
+    assert s['owners'][0]['stocks'] == 1 and s['owners'][0]['labs'] == ['Gardiner Lab']
+    assert 'Gardiner Lab' in s['labs']
+    # A lab that does not exist is refused.
+    assert 'No lab called' in lead.put('/api/elab/owner-labs',
+                                      json={'owner_labs': {'Marie Curie': 'Nowhere Lab'}}).get_json()['error']

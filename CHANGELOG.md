@@ -5,6 +5,20 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-04
+
+### Added
+- **A sample brought over from eLab becomes the stock of the lab whoever made it belongs to.** A shared
+  eLab group holds several labs' samples, and every one of them used to become the connecting lab's,
+  however little it had to do with them. Who belongs to which lab is now kept (`elab_owner_labs`) and
+  read when bringing samples over; an owner nobody has placed stays with the lab doing the bringing
+  over, credited to the administrator, as before.
+- `GET` and `PUT /api/elab/owner-labs` read and set that list, offering the owners the stocks here
+  actually name - read from this database, so the screen works whether or not eLab is answering - and
+  the labs to choose from. A lab the suite does not have is refused.
+- Filing a record into another lab is otherwise still refused: only bringing samples over from eLab may
+  do it, and only for a lab that exists.
+
 ## [0.17.0] - 2026-11-04
 
 ### Added

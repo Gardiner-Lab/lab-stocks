@@ -11,7 +11,7 @@ import os
 
 from flask import Flask, redirect, render_template, request
 
-APP_VERSION = '0.18.1'
+APP_VERSION = '0.19.0'
 SOFOS_URL = ('https://uusofos.itis.software/default.aspx#ViewID=BOInformationPortal_ListView'
              '&ObjectClassName=GROS.Module.ExtensionModules.Intranet.BOInformationPortal')
 CHEMWATCH_URL = 'https://jr.chemwatch.net/chemwatch.web/'
@@ -68,6 +68,25 @@ def create_app() -> Flask:
     @app.route('/')
     def stocks_page():
         return page('stocks.html')
+
+    # The tabs Lab Stocks adds to the suite's dashboard; the suite reads this and needs no change.
+    @app.route('/suite-manifest.json')
+    def suite_manifest():
+        return {
+            'tool': 'Lab Stocks',
+            'tabs': [
+                {'id': 'stocks-elab-owners', 'title': "eLab owners' labs", 'icon': '\U0001f9ea',
+                 'glyph': 'stocks', 'section': 'admin',
+                 'roles': ['admin', 'lab_admin', 'lab_lead'],
+                 # The suite frames this path as given, so it carries the prefix Lab Stocks is served at.
+                 'src': f'{request.script_root}/elab-owners?embed=1'},
+            ],
+        }
+
+    @app.route('/elab-owners')
+    def elab_owners_page():
+        """Which lab each of eLab's owners belongs to: a shared group holds several labs' samples."""
+        return page('elab_owners.html')
 
     @app.route('/labels')
     def labels_page():

@@ -265,3 +265,12 @@ table.data.orders .code-badge { white-space: nowrap; }
 .elab-also { margin-top: .35rem; }
 .elab-also .hint { margin-bottom: .15rem; }
 .elab-also-one { display: inline-flex; align-items: center; gap: .2rem; margin: 0 .6rem .15rem 0; font-size: .85rem; }
+
+/* Which lab each eLab owner belongs to: its own page, and a tab of the suite's dashboard. */
+.owner-labs { max-width: 60rem; margin: 0 auto; padding: 1.2rem 1.5rem 3rem; }
+.owner-labs h1 { font-size: 1.4rem; margin-bottom: .4rem; }
+.owner-labs .hint { margin-bottom: .6rem; }
+.owner-labs table { margin-top: .9rem; }
+.owner-labs select { font: inherit; padding: .25rem; max-width: 100%; }
+/* Inside a dashboard tab there is no page chrome, so the content starts at the top. */
+body.embedded .owner-labs { padding-top: .4rem; }

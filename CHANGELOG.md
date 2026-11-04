@@ -5,6 +5,15 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-04
+
+### Added
+- **A screen for which lab each eLab owner belongs to**, in the suite's dashboard under Administration.
+  A shared eLab group holds several labs' samples, and whoever made a sample there decides whose stock
+  it becomes here. The screen lists every owner the stocks already name, how many are theirs, and the
+  lab to file their next ones under. Until now this list could only be set through the API.
+  It also stands on its own at /elab-owners.
+
 ## [0.18.1] - 2026-11-04
 
 ### Fixed

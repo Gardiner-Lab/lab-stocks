@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>eLab owners' labs &middot; Lab Stocks</title>
+    <link rel="stylesheet" href="{{ request.script_root }}/static/trellis/trellis.css?v={{ version }}">
+    <link rel="stylesheet" href="{{ request.script_root }}/static/css/stocks.css?v={{ version }}">
+</head>
+{# Shown inside a tab of the suite's dashboard (embed=1), without Lab Stocks' own navigation. #}
+<body class="tt{% if request.args.get('embed') == '1' %} embedded{% endif %}">
+{% if request.args.get('embed') != '1' %}
+<header class="tt-bar">
+    <a class="tt-home" href="{{ links.suite_home }}" title="All of Trellis Tools"><img src="{{ request.script_root }}/static/trellis/trellis.svg" alt=""><span>Trellis Tools</span></a>
+    <a class="tt-module" href="{{ request.script_root }}/"><img src="{{ request.script_root }}/static/trellis/stocks.svg" alt="">Lab Stocks</a><span class="tt-sub">eLab owners' labs</span>
+</header>
+{% endif %}
+<main class="owner-labs">
+    <h1>Which lab each eLab owner belongs to</h1>
+    <p class="hint">A shared eLab group holds several labs' samples. When a sample is brought over, it
+       becomes the stock of the lab whoever made it in eLab belongs to &mdash; not automatically the lab
+       doing the bringing over. Someone not listed here stays with the lab bringing the samples over, and
+       is credited to the administrator.</p>
+    <p class="hint">Changing someone's lab here does not move the stocks already brought over; it decides
+       where the next ones go.</p>
+    <div id="ownerLabs"><p class="hint">Loading…</p></div>
+</main>
+{% if request.args.get('embed') != '1' %}
+{# Standing on its own, the page carries the suite's bar and the switcher to the other tools;
+   inside a dashboard tab the suite provides both, so neither is loaded. #}
+<script src="{{ request.script_root }}/static/trellis/modules.js?v={{ version }}" defer></script>
+{% endif %}
+<script src="{{ request.script_root }}/static/js/elab_owners.js?v={{ version }}"></script>
+</body>
+</html>

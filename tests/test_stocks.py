@@ -360,3 +360,20 @@ def test_every_page_reaches_the_suite_and_its_other_tools():
             continue
         assert 'class="tt-home" href="{{ links.suite_home }}"' in html, f'{page.name}: home link is not the suite'
         assert 'trellis/modules.js' in html, f'{page.name}: the other tools are not linked'
+
+
+def test_the_suite_is_offered_the_owner_labs_tab(world, as_user):
+    """
+    The suite's dashboard builds its tabs from each tool's manifest, framing "src" as given. So the
+    path must carry the prefix Lab Stocks is served at, or the tab would frame the suite's own root.
+    """
+    manifest = _ok(as_user('lead').get('/suite-manifest.json'))
+    tab = next(t for t in manifest['tabs'] if t['id'] == 'stocks-elab-owners')
+    assert tab['section'] == 'admin' and 'admin' in tab['roles']
+    assert tab['src'].endswith('/elab-owners?embed=1')
+    page = as_user('lead').get('/elab-owners')
+    assert page.status_code == 200
+    assert b'class="tt-bar"' in page.data, 'on its own it carries the suite bar'
+    framed = as_user('lead').get('/elab-owners?embed=1')
+    assert b'class="tt-bar"' not in framed.data, 'in a dashboard tab the suite provides the bar'
+    assert b'modules.js' not in framed.data, 'and the tool switcher'

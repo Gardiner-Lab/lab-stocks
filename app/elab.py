@@ -422,7 +422,7 @@ def _lines(*parts) -> str:
 
 
 def _plasmids(ids: List[str]) -> Dict[str, str]:
-    """The sequences of these plasmids in the Plasmid Editor's library (read only): id -> sequence."""
+    """The sequences of these plasmids in the Sequence Editor's library (read only): id -> sequence."""
     from app.sources import _read
     ids = [i for i in set(ids) if i]
     if not ids:

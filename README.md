@@ -3,9 +3,9 @@
 Trellis Tools' glycerol stocks, primers, chemicals and antibodies.
 
 - **Glycerol stocks** are numbered per lab: `GL-G-0042`.
-  - Each is linked to the plasmid it holds in the Plasmid Editor's library, and records the clone,
+  - Each is linked to the plasmid it holds in the Sequence Editor's library, and records the clone,
     strain, selection, where it is kept and its status.
-  - Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the
+  - Confirming a plasmid by sequencing in the Sequence Editor makes its glycerol stock here, with the
     lab's next number. That number is recorded on the plasmid and in MoClo.
 - **Primers** are numbered `GL-O-0007` (O for oligo).
   - Each records its sequence (IUPAC codes allowed), and its length, GC and Tm are worked out
@@ -107,7 +107,7 @@ the suite's database. Each lab is in one at most; the lists say which.
   with its lab; the choice is remembered in the browser.
 - Another lab's stock opens read-only: it can be seen, labelled and searched for
   (notebook links too), but only its own lab changes, deletes, attaches files to
-  or orders it. The Plasmid Editor binds only the lab's own primers.
+  or orders it. The Sequence Editor binds only the lab's own primers.
 - eLab stays per lab: each lab sends its own stocks with its own token; in a
   shared eLab group, a sample's owner says whose it is.
 
@@ -160,7 +160,7 @@ of them (as eLab spells it):
 | selection; plant and yeast markers | *Bacterial Markers*; *Plant Markers*, *Yeast Markers* |
 | permit, biosafety level, host system (empty: the lab's, or from the strain) | *Permit*, *Biosafety level*, *Host system* |
 | insert(s), gene IDs, donor organism(s), harmful gene product and remarks | the fields of those names |
-| the plasmid linked in the Plasmid Editor | *Plasmid sequence*, *Molecular weight (in kb)* |
+| the plasmid linked in the Sequence Editor | *Plasmid sequence*, *Molecular weight (in kb)* |
 | storage location (eLab), and the place in a box | the sample is put there in eLab's storage |
 | plasmid, clone, where kept, made on, notes | *Remarks* |
 

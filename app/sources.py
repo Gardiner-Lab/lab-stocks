@@ -1,7 +1,7 @@
 """
 What Lab Stocks reads from the other tools, never changing it.
 
-    Plasmids        from the Plasmid Editor's library: the plasmid a glycerol
+    Plasmids        from the Sequence Editor's library: the plasmid a glycerol
                     stock holds; a plasmid opens in the editor.
     Notebook pages  that link to a glycerol stock or primer (data-stock="GL-G-0042"),
                     shown on that record to whoever may open the page.

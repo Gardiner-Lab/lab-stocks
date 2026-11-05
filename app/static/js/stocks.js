@@ -696,8 +696,8 @@ const App = {
       this.shareLine(),
       this.elabLine(),
       el('p', { class: 'hint' }, {
-        glycerol: 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Plasmid Editor makes its glycerol stock here, with the next number.',
-        primer: 'The lab\'s oligos, with where each tube is. Primers designed in the Plasmid Editor can be saved here, and the editor shows which of them bind a plasmid.',
+        glycerol: 'Frozen cultures of the lab\'s plasmids. Confirming a plasmid by sequencing in the Sequence Editor makes its glycerol stock here, with the next number.',
+        primer: 'The lab\'s oligos, with where each tube is. Primers designed in the Sequence Editor can be saved here, and the editor shows which of them bind a plasmid.',
         chemical: 'The lab\'s chemicals, with the room each is kept in. Open one to add its safety data sheet (SDS).',
         antibody: 'The lab\'s antibodies: primary and secondary, who makes each, the animal it is raised in, and how to use it.',
         material: 'Plant material kept for later processing: a tube each, often a box of them. Link a tube from the notebook by its code; add a whole box at once with Box of tubes.',
@@ -900,9 +900,9 @@ const App = {
     ];
   },
 
-  /** Choose a plasmid from the Plasmid Editor's library (the ones this person may open). */
+  /** Choose a plasmid from the Sequence Editor's library (the ones this person may open). */
   pickPlasmid(title = 'Which plasmid is in it?') {
-    return picker({ title, placeholder: 'Search the Plasmid Editor\'s library',
+    return picker({ title, placeholder: 'Search the Sequence Editor\'s library',
       search: async (q) => (await api('GET', `/plasmids?q=${encodeURIComponent(q)}`)).plasmids,
       describe: (p) => [el('b', { text: p.name }), el('span', { class: 'hint' }, ` · ${p.length.toLocaleString()} bp${p.owner ? ` · ${p.owner}` : ''}${p.confirmed ? ' · ✓ sequenced' : ''}`)] });
   },
@@ -923,7 +923,7 @@ const App = {
     if (!plasmid) return;
     formModal({
       title: `Glycerol stock of ${plasmid.name}`,
-      intro: 'Usually made for you on confirming a plasmid by sequencing in the Plasmid Editor; add one here for stocks made otherwise.',
+      intro: 'Usually made for you on confirming a plasmid by sequencing in the Sequence Editor; add one here for stocks made otherwise.',
       fields: this.glycerolFields(null),
       wide: true,
       submit: async (v) => {
@@ -939,17 +939,17 @@ const App = {
     const open = linked.state === 'open';
     // The plasmid it holds: a link to it in the editor, or why there is none.
     const plasmidFact = open
-      ? el('a', { href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener', title: 'Open in the Plasmid Editor' }, glyph('plasmid'), ` ${linked.name || rec.plasmid_name}`)
+      ? el('a', { href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener', title: 'Open in the Sequence Editor' }, glyph('plasmid'), ` ${linked.name || rec.plasmid_name}`)
       : el('span', {}, rec.plasmid_name || '—', ' ', el('span', { class: 'hint warn-text' }, {
         unlinked: '(not linked to a plasmid in the editor)',
-        missing: '(no longer in the Plasmid Editor\'s library)',
+        missing: '(no longer in the Sequence Editor\'s library)',
         other_lab: `(${linked.owner || 'someone'}'s, in another lab, and not public)`,
       }[linked.state] || ''));
     return el('div', {},
       this.head(rec, (linked.name || rec.plasmid_name) + (rec.clone ? ` clone ${rec.clone}` : ''),
         [rec.status, rec.host, rec.location && `kept in ${rec.location}`].filter(Boolean).join(' · '), [
           open ? el('a', { class: 'btn btn-primary', href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener',
-            title: 'Open the plasmid in this stock in the Plasmid Editor' }, glyph('plasmid'), ' Open in the Plasmid Editor') : null,
+            title: 'Open the plasmid in this stock in the Sequence Editor' }, glyph('plasmid'), ' Open in the Sequence Editor') : null,
           rec.plasmid_id ? el('a', { class: 'btn btn-secondary', href: `${ST.seeds}/#tree=plasmid:${encodeURIComponent(rec.plasmid_id)}`,
             target: '_blank', rel: 'noopener', title: 'In the Seed Bank: the lines made with this plasmid, their seeds and plants, and the notebook pages about each' },
           glyph('link'), ' Family tree ↗') : null,
@@ -1283,7 +1283,7 @@ const App = {
       put(summary, {
         seed: `${list.length} seed samples → ${groups(list).size} lines in the Seed Bank (one per cross or note), each sample a seed lot`,
         material: `${list.length} samples → ${list.length} tubes of plant material here, in their places in eLab's storage`,
-        glycerol: `${list.length} samples → ${list.length} glycerol stocks here, in their places in eLab's storage, each linked to the plasmid of its name in the Plasmid Editor when there is one`,
+        glycerol: `${list.length} samples → ${list.length} glycerol stocks here, in their places in eLab's storage, each linked to the plasmid of its name in the Sequence Editor when there is one`,
       }[kind]);
       const cols = { seed: ['Note (the line)', 'Species', (s) => s.note, (s) => s.species],
         material: ['Description', 'Note', (s) => s.description, (s) => s.note],

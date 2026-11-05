@@ -359,7 +359,7 @@ def elab_import_glycerol(person):
     """
     Brings these Glycerol Stock samples over from eLab as glycerol stocks, each linked to its sample: its
     fields as eLab has them, its place in eLab's storage, and linked to the plasmid of its name in the
-    Plasmid Editor, when there is exactly one this person may open.
+    Sequence Editor, when there is exactly one this person may open.
     """
     lab = _elab_admin_lab(person)
     wanted = {int(i) for i in (_body().get('ids') or []) if str(i).isdigit()}

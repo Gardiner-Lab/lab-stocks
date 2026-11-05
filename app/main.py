@@ -2,7 +2,7 @@
 Lab Stocks: Trellis Tools' glycerol stocks, primers, chemicals and antibodies, and the order list.
 
 Glycerol stocks, numbered per lab and linked to the plasmid they hold (made
-when a plasmid is confirmed by sequencing in the Plasmid Editor); primers with
+when a plasmid is confirmed by sequencing in the Sequence Editor); primers with
 their sequences, Tm and where the tube is; storage, labels with QR codes, and
 links from the notebook.
 """
@@ -11,7 +11,7 @@ import os
 
 from flask import Flask, redirect, render_template, request
 
-APP_VERSION = '0.19.0'
+APP_VERSION = '0.19.1'
 SOFOS_URL = ('https://uusofos.itis.software/default.aspx#ViewID=BOInformationPortal_ListView'
              '&ObjectClassName=GROS.Module.ExtensionModules.Intranet.BOInformationPortal')
 CHEMWATCH_URL = 'https://jr.chemwatch.net/chemwatch.web/'

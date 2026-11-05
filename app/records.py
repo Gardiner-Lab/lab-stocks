@@ -660,7 +660,7 @@ def update(person: Person, kind: str, ident: str, data: dict) -> Optional[str]:
         from app import sources
         found = sources.plasmid(person, fields['plasmid_id'])
         if found['state'] != 'open':
-            raise ValueError("That plasmid is not in the Plasmid Editor's library, or is not one you may open")
+            raise ValueError("That plasmid is not in the Sequence Editor's library, or is not one you may open")
         fields['plasmid_id'], fields['plasmid_name'] = found['id'], found['name']
     elif kind == 'glycerol' and 'plasmid_id' in fields:
         fields.pop('plasmid_id')            # a link is changed, not taken away

@@ -64,6 +64,48 @@ def all_labs() -> List[str]:
     return [r['name'] for r in _read(_path(), 'SELECT name FROM labs ORDER BY name COLLATE NOCASE')]
 
 
+def demo_labs() -> Set[str]:
+    """
+    The teaching demo's labs (casefolded): those in the chair group the suite records as the
+    demo's (suite.db settings 'demo.chair_group', set by the suite's demo/accounts.py).
+    """
+    rows = _read(_path(), "SELECT value FROM settings WHERE key = 'demo.chair_group'")
+    if not rows or not rows[0]['value'] or not _known():
+        return set()
+    return {r['name'].casefold() for r in _read(_path(), 'SELECT name FROM labs WHERE chair_group_id = ?',
+                                                 (rows[0]['value'],))}
+
+
+def in_demo(person: Person) -> bool:
+    """
+    In the teaching demo: every lab of theirs is one of the demo's. They see the demo labs'
+    stocks and nothing of the real labs', even what a real lab shares with them, and are shown
+    no real lab or chair group to share with.
+    """
+    if person is None or person.is_admin:
+        return False
+    mine = person.lab_names()
+    return bool(mine) and mine <= demo_labs()
+
+
+def labs_for(person: Person) -> List[str]:
+    """all_labs(), but only the demo's for someone in the demo."""
+    found = all_labs()
+    if in_demo(person):
+        demo = demo_labs()
+        found = [n for n in found if n.casefold() in demo]
+    return found
+
+
+def groups_for(person: Person) -> List[dict]:
+    """all_groups(), but only the demo's for someone in the demo."""
+    found = all_groups()
+    if in_demo(person):
+        demo = demo_labs()
+        found = [g for g in found if g['labs'] and {n.casefold() for n in g['labs']} <= demo]
+    return found
+
+
 def mates(labs: Set[str]) -> Set[str]:
     """Every lab (casefolded) in a chair group with one of these labs (casefolded)."""
     if not labs or not _known():

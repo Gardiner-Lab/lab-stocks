@@ -294,3 +294,28 @@ def test_an_administrator_in_no_lab_chooses_the_lab_to_share_from(as_user, world
     chem = _ok(ana.post('/api/chemicals', json={'name': 'Ethanol'}), 201)['record']
     _ok(boss.post('/api/shares', json={'lab': 'Gardiner Lab', 'kind': 'chemical', 'target': 'Other Lab'}))
     assert chem['code'] in _codes(_ok(zoe.get('/api/chemicals')), 'chemicals')
+
+
+def test_the_demo_sees_only_the_demos(as_user, world):
+    """Other Lab as the teaching demo: what a real lab shares with it, it does not see."""
+    import sqlite3
+    _lab_admins(world, 'lead', 'olga')
+    _chair_groups(world, l1='Plant', l2='Demo Chair Group')
+    conn = sqlite3.connect(world['paths']['suite'])
+    conn.execute('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)')
+    conn.execute("INSERT INTO settings VALUES ('demo.chair_group', 'demo chair group')")
+    conn.commit()
+    conn.close()
+    lead, ana, zoe, olga = (as_user(u) for u in ('lead', 'ana', 'zoe', 'olga'))
+    chem = _ok(ana.post('/api/chemicals', json={'name': 'Ethanol'}), 201)['record']
+    _ok(lead.post('/api/shares', json={'kind': 'all', 'target_kind': 'lab', 'target': 'Other Lab'}))
+    _ok(lead.post('/api/shares', json={'kind': 'all', 'target_kind': 'group', 'target': 'demo chair group'}))
+    assert chem['code'] not in _codes(_ok(zoe.get('/api/chemicals')), 'chemicals')
+    assert zoe.get(f"/api/chemicals/{chem['code']}").status_code == 404
+    # Its own stocks it sees, and it is shown no real lab or chair group to share with.
+    own = _ok(zoe.post('/api/chemicals', json={'name': 'Demo buffer'}), 201)['record']
+    assert own['code'] in _codes(_ok(zoe.get('/api/chemicals')), 'chemicals')
+    form = _ok(olga.get('/api/shares'))
+    assert form['other_labs'] == [] and form['other_groups'] == []
+    assert olga.post('/api/shares', json={'kind': 'all', 'target_kind': 'lab', 'target': 'Gardiner Lab'}).status_code == 400
+    assert olga.get('/api/elab/import').status_code == 403

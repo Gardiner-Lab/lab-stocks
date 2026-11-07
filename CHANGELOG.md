@@ -5,6 +5,11 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-08
+
+### Demo
+- **The teaching demo sees only the demo's.** Someone in the suite's demo no longer sees what a real lab shares with a demo lab or chair group, is offered only the demo's labs and chair group to share with, and cannot bring stocks over from eLab.
+
 ## [0.20.2] - 2026-11-07
 
 ### Fixed

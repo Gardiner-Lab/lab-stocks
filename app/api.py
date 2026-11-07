@@ -141,6 +141,8 @@ def elab_status(person):
 
 def _elab_lab(person) -> str:
     lab = records.lab_of(person, _body().get('lab') or request.args.get('lab'), strict=True)
+    if chairs.in_demo(person):
+        raise records.Forbidden('The demo does not bring stocks over from eLab')
     if not person.administers(lab):
         raise records.Forbidden("Only the lab's lab admin connects its stocks to eLab")
     return lab
@@ -198,6 +200,8 @@ def elab_add_location(person):
 
 def _elab_admin_lab(person) -> str:
     lab = records.lab_of(person, _body().get('lab') or request.args.get('lab'), strict=True)
+    if chairs.in_demo(person):
+        raise records.Forbidden('The demo does not bring stocks over from eLab')
     if not person.administers(lab):
         raise records.Forbidden("Only the lab's lab admin brings stocks over from eLab")
     return lab

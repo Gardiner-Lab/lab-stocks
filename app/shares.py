@@ -79,11 +79,15 @@ def _granted(person: Person, conn, want_edit: bool) -> Dict[str, Set[str]]:
     """
     own = {n.casefold() for n in person.lab_names()}
     me = _targets_person(person, conn)
+    # The teaching demo is shown the demo labs' stocks only, whatever a real lab shares with it.
+    only = chairs.demo_labs() if chairs.in_demo(person) else None
     out: Dict[str, Set[str]] = {k: set() for k in KINDS}
     for row in _rows(conn):
         owner = (row['owner_lab'] or '').casefold()
         if owner in own:
             continue                                   # a lab's share with itself: nothing to add
+        if only is not None and owner not in only:
+            continue
         if want_edit and not row['can_edit']:
             continue
         if row['target_kind'] == 'lab':
@@ -186,7 +190,7 @@ def list_for(person: Person, lab: Optional[str] = None) -> dict:
         from app.records import labs_of
         if labs_of(person)[0].startswith('user:'):
             # An administrator in no lab shares on a lab's behalf: the page asks which.
-            return {'needs_lab': True, 'labs': chairs.all_labs()}
+            return {'needs_lab': True, 'labs': chairs.labs_for(person)}
     owner = _owner_lab(person, lab)
     group = chairs.info(person, owner)['group']
     with connect() as conn:
@@ -195,13 +199,13 @@ def list_for(person: Person, lab: Optional[str] = None) -> dict:
         gid = chairs.group_id(owner)
         optin = conn.execute('SELECT * FROM chair_sharing WHERE chair_group_id = ?',
                              (str(gid),)).fetchone() if gid is not None else None
-    groups = chairs.all_groups()
-    names = {g['id']: g['name'] for g in groups}
+    groups = chairs.groups_for(person)
+    names = {g['id']: g['name'] for g in chairs.all_groups()}
     for r in rows:
         r['can_edit'] = bool(r['can_edit'])
         if r['target_kind'] == 'group':
             r['target_name'] = names.get(str(r['target']), r['target'])     # a group since removed keeps its id
-    others = [l for l in chairs.all_labs() if l.casefold() != owner.casefold()]
+    others = [l for l in chairs.labs_for(person) if l.casefold() != owner.casefold()]
     own_gid = str(chairs.group_id(owner)) if chairs.group_id(owner) is not None else None
     return {'lab': owner, 'shares': rows, 'kinds': list(KINDS), 'other_labs': others,
             'other_groups': [g for g in groups if g['id'] != own_gid],
@@ -228,7 +232,7 @@ def create(person: Person, lab: Optional[str], kind: str, target_kind: str, targ
         target = ''
     elif target_kind == 'group':
         # Another chair group, by id (its name is accepted too): every lab in it, now and later.
-        found = next((g for g in chairs.all_groups()
+        found = next((g for g in chairs.groups_for(person)
                       if g['id'] == target or g['name'].casefold() == target.casefold()), None)
         if found is None:
             raise ValueError('Choose a chair group to share with')
@@ -241,6 +245,8 @@ def create(person: Person, lab: Optional[str], kind: str, target_kind: str, targ
             raise ValueError('Choose a lab to share with')
         if target.casefold() == owner.casefold():
             raise ValueError('A lab already sees its own stocks')
+        if chairs.in_demo(person) and target.casefold() not in chairs.demo_labs():
+            raise ValueError('The demo shares with the demo labs only')
     with connect() as conn:
         share_id = secrets.token_hex(12)
         conn.execute('INSERT INTO shares (id, owner_lab, kind, target_kind, target, can_edit, created_by) '

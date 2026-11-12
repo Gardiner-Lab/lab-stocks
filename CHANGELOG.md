@@ -5,6 +5,14 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-12
+
+### Added
+- **A glycerol stock without a plasmid.** **＋ Glycerol stock** now offers **Without a plasmid of the
+  library**, for an empty strain or a plasmid that is not in the Sequence Editor. What it holds can be said
+  in words, or left empty, and changed later; **Link a plasmid…** adds a plasmid afterwards. Its title and
+  label fall back to the strain. The help page already promised this; the page did not allow it.
+
 ## [0.21.0] - 2026-11-08
 
 ### Demo

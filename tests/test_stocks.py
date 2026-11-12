@@ -31,7 +31,14 @@ def test_a_glycerol_stock_for_a_confirmed_plasmid(as_user):
     detail = _ok(ana.get('/api/glycerol/gard-g-0001'))['record']
     assert detail['plasmid_name'] == 'pGreen-35S-GFP' and [s['code'] for s in detail['same_plasmid']] == ['GARD-G-0002']
     assert 'created GARD-G-0001 on confirming the plasmid by sequencing' in detail['changes'][0]['what']
-    assert ana.post('/api/glycerol', json={'clone': '1'}).status_code == 400, 'it must say which plasmid'
+    # Without a plasmid: an empty strain, or one whose plasmid is not in the editor's library.
+    bare = _ok(ana.post('/api/glycerol', json={'host': 'GV3101', 'selection': 'rifampicin'}), 201)['record']
+    assert bare['code'] == 'GARD-G-0003' and bare['plasmid_id'] == '' and bare['plasmid_name'] == ''
+    assert _ok(ana.get('/api/glycerol/GARD-G-0003'))['record']['plasmid'] == {'state': 'unlinked'}
+    named = _ok(ana.post('/api/glycerol', json={'plasmid_name': 'pSoup', 'host': 'GV3101'}), 201)['record']
+    assert named['plasmid_name'] == 'pSoup' and named['plasmid_id'] == ''
+    _ok(ana.put('/api/glycerol/GARD-G-0003', json={'plasmid_name': 'empty GV3101'}))
+    assert _ok(ana.get('/api/glycerol/GARD-G-0003'))['record']['plasmid_name'] == 'empty GV3101'
     _ok(ana.put('/api/glycerol/GARD-G-0001', json={'status': 'used up'}))
     assert ana.put('/api/glycerol/GARD-G-0001', json={'status': 'lost'}).status_code == 400
 

@@ -169,7 +169,7 @@ function formModal({ title, intro, fields, submit, label = 'Save', wide = false 
 }
 
 /** Search-as-you-type list in a dialog; resolves with the item chosen, or null. */
-function picker({ title, placeholder, search, describe }) {
+function picker({ title, placeholder, search, describe, skip }) {
   return new Promise((resolve) => {
     let chosen = null;
     modal({
@@ -195,7 +195,9 @@ function picker({ title, placeholder, search, describe }) {
         setTimeout(() => input.focus(), 0);
         run();
       },
-      buttons: [{ label: 'Cancel', kind: 'secondary' }],
+      // skip: a way on without choosing, e.g. { label: 'Without a plasmid', value: { none: true } }.
+      buttons: [...(skip ? [{ label: skip.label, kind: 'secondary', onClick: () => { chosen = skip.value; } }] : []),
+        { label: 'Cancel', kind: 'secondary' }],
     });
   });
 }
@@ -873,6 +875,12 @@ const App = {
 
   section(title, ...content) { return el('section', { class: 'section' }, el('h2', {}, title), content); },
 
+  /** What a stock not linked to the editor's library holds, in words (a linked one is named as the editor has it). */
+  heldField(rec) {
+    return { name: 'plasmid_name', label: 'What it holds', value: rec?.plasmid_name,
+      placeholder: 'e.g. pSoup, or empty GV3101 — or leave empty' };
+  },
+
   glycerolFields(rec) {
     return [
       { name: 'clone', label: 'Clone', value: rec?.clone, placeholder: 'e.g. 4, B2' },
@@ -901,8 +909,8 @@ const App = {
   },
 
   /** Choose a plasmid from the Sequence Editor's library (the ones this person may open). */
-  pickPlasmid(title = 'Which plasmid is in it?') {
-    return picker({ title, placeholder: 'Search the Sequence Editor\'s library',
+  pickPlasmid(title = 'Which plasmid is in it?', skip = null) {
+    return picker({ title, skip, placeholder: 'Search the Sequence Editor\'s library',
       search: async (q) => (await api('GET', `/plasmids?q=${encodeURIComponent(q)}`)).plasmids,
       describe: (p) => [el('b', { text: p.name }), el('span', { class: 'hint' }, ` · ${p.length.toLocaleString()} bp${p.owner ? ` · ${p.owner}` : ''}${p.confirmed ? ' · ✓ sequenced' : ''}`)] });
   },
@@ -919,15 +927,21 @@ const App = {
   },
 
   async newGlycerol() {
-    const plasmid = await this.pickPlasmid();
+    const plasmid = await this.pickPlasmid('Which plasmid is in it?',
+      { label: 'Without a plasmid of the library', value: { none: true } });
     if (!plasmid) return;
+    // Not every stock holds a plasmid of the editor's library: an empty strain, or a plasmid kept elsewhere.
+    const none = plasmid.none;
     formModal({
-      title: `Glycerol stock of ${plasmid.name}`,
-      intro: 'Usually made for you on confirming a plasmid by sequencing in the Sequence Editor; add one here for stocks made otherwise.',
-      fields: this.glycerolFields(null),
+      title: none ? 'New glycerol stock' : `Glycerol stock of ${plasmid.name}`,
+      intro: none
+        ? 'Not linked to a plasmid in the Sequence Editor. Say what it holds, if anything; you can link a plasmid later.'
+        : 'Usually made for you on confirming a plasmid by sequencing in the Sequence Editor; add one here for stocks made otherwise.',
+      fields: [...(none ? [this.heldField(null)] : []), ...this.glycerolFields(null)],
       wide: true,
       submit: async (v) => {
-        const { record } = await api('POST', '/glycerol', { ...v, plasmid_id: plasmid.id, plasmid_name: plasmid.name, lab: this.chosenLab });
+        const { record } = await api('POST', '/glycerol', none ? { ...v, lab: this.chosenLab }
+          : { ...v, plasmid_id: plasmid.id, plasmid_name: plasmid.name, lab: this.chosenLab });
         location.hash = `glycerol=${record.code}`;
         toast(`Made ${record.code}`, 'success');
       },
@@ -941,12 +955,12 @@ const App = {
     const plasmidFact = open
       ? el('a', { href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener', title: 'Open in the Sequence Editor' }, glyph('plasmid'), ` ${linked.name || rec.plasmid_name}`)
       : el('span', {}, rec.plasmid_name || '—', ' ', el('span', { class: 'hint warn-text' }, {
-        unlinked: '(not linked to a plasmid in the editor)',
+        unlinked: rec.plasmid_name ? '(not linked to a plasmid in the editor)' : '(no plasmid linked)',
         missing: '(no longer in the Sequence Editor\'s library)',
         other_lab: `(${linked.owner || 'someone'}'s, in another lab, and not public)`,
       }[linked.state] || ''));
     return el('div', {},
-      this.head(rec, (linked.name || rec.plasmid_name) + (rec.clone ? ` clone ${rec.clone}` : ''),
+      this.head(rec, (linked.name || rec.plasmid_name || rec.host || 'Glycerol stock') + (rec.clone ? ` clone ${rec.clone}` : ''),
         [rec.status, rec.host, rec.location && `kept in ${rec.location}`].filter(Boolean).join(' · '), [
           open ? el('a', { class: 'btn btn-primary', href: editorOpen(rec.plasmid_id), target: '_blank', rel: 'noopener',
             title: 'Open the plasmid in this stock in the Sequence Editor' }, glyph('plasmid'), ' Open in the Sequence Editor') : null,
@@ -957,7 +971,7 @@ const App = {
             title: open ? 'Link this stock to another plasmid of the editor\'s library' : 'Link this stock to its plasmid in the editor\'s library' },
           glyph('plasmid'), open ? ' Change plasmid…' : ' Link a plasmid…'),
           el('button', { class: 'btn btn-secondary', onclick: () => formModal({
-            title: `Edit ${rec.code}`, fields: this.glycerolFields(rec), wide: true,
+            title: `Edit ${rec.code}`, fields: [...(rec.plasmid_id ? [] : [this.heldField(rec)]), ...this.glycerolFields(rec)], wide: true,
             submit: async (v) => { await api('PUT', `/glycerol/${rec.code}`, v); this.reload(); },
           }) }, '✎ Edit')]),
       this.facts([

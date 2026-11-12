@@ -40,7 +40,7 @@ function qrModules(text) {
 function content(rec) {
   const target = `${publicBase()}/#${rec.kind}=${rec.code}`;
   const lines = {
-    glycerol: () => [`${rec.plasmid_name}${rec.clone ? ` clone ${rec.clone}` : ''}`, [rec.host, rec.selection].filter(Boolean).join(' · '),
+    glycerol: () => [`${rec.plasmid_name || rec.host || ''}${rec.clone ? ` clone ${rec.clone}` : ''}`.trim(), [rec.host, rec.selection].filter(Boolean).join(' · '),
       [euDate(rec.made_on), rec.location].filter(Boolean).join(' · ')],
     primer: () => [rec.name, `${rec.mod5 ? `[${rec.mod5}]` : ''}${rec.sequence}${rec.mod3 ? `[${rec.mod3}]` : ''}`,
       [`${rec.length} nt`, rec.tm !== null ? `Tm ${rec.tm} °C` : '', rec.location].filter(Boolean).join(' · ')],

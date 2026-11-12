@@ -451,8 +451,7 @@ def _glycerol_fields(data: dict, partial: bool) -> Dict[str, Any]:
         if s not in STATUS:
             raise ValueError(f'status must be one of {", ".join(STATUS)}')
         out['status'] = s
-    if not partial and not (out['plasmid_id'] or out['plasmid_name']):
-        raise ValueError('Which plasmid is in this glycerol stock?')
+    # A plasmid is not required: an empty strain, or one whose plasmid is not in the editor's library.
     return out
 
 

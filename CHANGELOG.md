@@ -5,6 +5,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-17
+
+### Added
+- **How and where to get rid of a chemical.** A chemical's form has a **Disposal** field (which waste
+  container, which room), shown on its page. A new bottle left without it takes it from another bottle of the
+  lab with the same CAS number. Lab Stocks' search sends it along, for the notebook's waste disposal box.
+- **The lab's disposal routes.** A lab admin keeps them with **Disposal routes…** on the Chemicals page, one per
+  line; a chemical's form offers them as a list, or words of one's own. A chemical keeps the words chosen when
+  the list changes later.
+
 ## [0.22.0] - 2026-11-12
 
 ### Added

@@ -692,7 +692,10 @@ const App = {
             chemical: () => this.editChemical(), antibody: () => this.editAntibody(), material: () => this.editMaterial() })[kind]() },
           { glycerol: '＋ Glycerol stock', primer: '＋ Primer', chemical: '＋ Chemical', antibody: '＋ Antibody', material: '＋ Tube' }[kind]),
           kind === 'material' ? el('button', { class: 'btn btn-primary', title: 'Many tubes at once: numbered, or a pasted list, and their places in a box',
-            onclick: () => this.boxOfTubes() }, glyph('box'), ' Box of tubes…') : null, orderBtn, labelBtn)),
+            onclick: () => this.boxOfTubes() }, glyph('box'), ' Box of tubes…') : null,
+          kind === 'chemical' && this.meta.orders.handles.length ? el('button', { class: 'btn btn-secondary',
+            title: 'The ways the lab gets rid of chemicals, offered as a list on each chemical’s form', onclick: () => this.editDisposalRoutes() },
+          glyph('hazard'), ' Disposal routes…') : null, orderBtn, labelBtn)),
       this.labCodeLine(),
       this.chairLine(),
       this.shareLine(),
@@ -1464,7 +1467,59 @@ const App = {
 
   /* chemicals ---------------------------------------------------------------------- */
 
-  editChemical(rec) {
+  /** A lab admin's list of the lab's ways of getting rid of chemicals: one per line. */
+  async editDisposalRoutes() {
+    const labs = this.meta.orders.handles;
+    let lab = labs.includes(this.chosenLab) ? this.chosenLab : labs[0];
+    let current;
+    try { current = await api('GET', `/disposal?lab=${encodeURIComponent(lab)}`); } catch (err) { toast(err.message, 'error'); return; }
+    formModal({
+      title: `Disposal routes${labs.length > 1 ? `: ${current.lab}` : ''}`,
+      intro: 'One per line: what kind of waste, and where it goes. People choose one of these on a chemical’s form '
+        + '(or type their own), and it shows on the chemical’s page and at the foot of a notebook page the chemical is '
+        + 'added to. Changing this list leaves what chemicals already say as it is.',
+      fields: [{ name: 'routes', label: 'Disposal routes', type: 'textarea', value: current.routes.join('\n'),
+        placeholder: 'Halogenated organic waste: the yellow can in the fume hood of O.703\n'
+          + 'Non-halogenated solvents: the white can, O.703\n'
+          + 'Heavy metals: collected by the waste service, ask the lab manager\n'
+          + 'Dilute, harmless: down the sink with plenty of water' }],
+      wide: true,
+      submit: async (v) => {
+        const res = await api('PUT', '/disposal', { lab: current.lab, routes: v.routes.split('\n') });
+        toast(`${res.routes.length} disposal route${res.routes.length === 1 ? '' : 's'} kept for ${res.lab}`, 'success');
+      },
+    });
+  },
+
+  /** The Disposal field of a chemical's form: the lab's routes to choose from, or words of one's own. */
+  disposalField(routes, value, canSet) {
+    const OTHER = '__other__';
+    const own = el('textarea', { rows: 2, placeholder: 'How and where to get rid of it, e.g. Halogenated organic waste: '
+      + 'the yellow can in the fume hood of O.703. Never down the sink.' });
+    own.value = value || '';
+    if (!routes.length) {
+      return { node: el('div', {}, own, el('span', { class: 'hint' }, canSet
+        ? 'Set the lab’s disposal routes with Disposal routes… on the Chemicals page, to choose from a list here.'
+        : 'Your lab admin can set the lab’s disposal routes, to choose from a list here.')),
+      get: () => ({ disposal: own.value.trim() }) };
+    }
+    const known = routes.includes(value);
+    const choice = el('select', { 'aria-label': 'Disposal route' },
+      el('option', { value: '', selected: !value }, '— not recorded —'),
+      routes.map((r) => el('option', { value: r, selected: r === value }, r)),
+      el('option', { value: OTHER, selected: !!value && !known }, 'Other: type it…'));
+    const show = () => { own.hidden = choice.value !== OTHER; };
+    choice.addEventListener('change', () => { show(); if (!own.hidden) own.focus(); });
+    if (known) own.value = '';
+    show();
+    return { node: el('div', { class: 'disposal-field' }, choice, own),
+      get: () => ({ disposal: choice.value === OTHER ? own.value.trim() : choice.value }) };
+  },
+
+  async editChemical(rec) {
+    const lab = rec?.lab || this.chosenLab;
+    let disposal = { routes: [], can_set: false };
+    try { disposal = await api('GET', `/disposal?lab=${encodeURIComponent(lab)}`); } catch { /* not one of theirs: words only */ }
     formModal({
       title: rec ? `Edit ${rec.code}` : 'New chemical',
       fields: [
@@ -1473,6 +1528,10 @@ const App = {
         { name: 'room', label: 'Room', value: rec?.room, placeholder: 'e.g. Kruyt O.703, flammables cabinet' },
         { name: 'size', label: 'Size', value: rec?.size, placeholder: 'e.g. 500 mL, 25 g' },
         { name: 'status', label: 'Status', type: 'select', options: this.meta.chemical_status, value: rec?.status || 'in stock' },
+        { name: 'disposal', label: 'Disposal: how and where', type: 'custom',
+          build: () => this.disposalField(disposal.routes, rec?.disposal, disposal.can_set),
+          hint: 'Shown on its page, and at the foot of a notebook page it is added to. Left empty for a new bottle, it '
+            + 'is taken from another bottle of the lab with the same CAS number.' },
         { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
       ],
       submit: async (v) => {
@@ -1527,6 +1586,11 @@ const App = {
       this.facts([['Name', rec.name], ['CAS number', rec.cas ? el('span', {}, el('span', { class: 'mono' }, rec.cas), ' ', copyCas) : null],
         ['Room', rec.room], ['Size', rec.size], ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null,
+      this.section('Disposal',
+        rec.disposal ? el('p', { class: 'description disposal' }, rec.disposal)
+          : el('p', { class: 'hint' }, 'How and where to get rid of it is not recorded yet. ',
+            rec.mine ? el('a', { href: '#', onclick: (e) => { e.preventDefault(); this.editChemical(rec); } }, 'Add it') : 'Ask whoever added it.',
+            ' The safety data sheet (section 13) says how.')),
       this.section('Safety data sheet',
         el('div', { class: 'sds' },
           sds ? el('span', {}, el('a', { class: 'btn btn-primary', href: fileUrl(sds.id), target: '_blank', rel: 'noopener' }, glyph('pdf'), ' Open the SDS'),

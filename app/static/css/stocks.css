@@ -285,3 +285,8 @@ body.embedded .owner-labs { padding-top: .4rem; }
 .own-label-buttons { display: flex; gap: .4rem; margin-top: .8rem; }
 .own-label-error:empty { display: none; }
 .own-label-error { margin-top: .5rem; color: #c0392b; }
+
+/* A chemical's disposal: the lab's routes to choose from, or words of one's own. */
+.disposal-field { display: flex; flex-direction: column; gap: .4rem; }
+.disposal-field select { max-width: 100%; }
+.description.disposal { white-space: pre-wrap; }

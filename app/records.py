@@ -405,7 +405,9 @@ def search(person: Person, q: str, limit: int = 20) -> List[dict]:
     found = [dict(kind='glycerol', code=r['code'], label=f"{r['code']} {r['plasmid_name']}"
                   + (f" clone {r['clone']}" if r['clone'] else '')) for r in list_records(person, 'glycerol', q, limit=limit)]
     found += [dict(kind='primer', code=r['code'], label=f"{r['code']} {r['name']}") for r in list_records(person, 'primer', q, limit=limit)]
-    found += [dict(kind='chemical', code=r['code'], label=f"{r['code']} {r['name']}" + (f" (CAS {r['cas']})" if r['cas'] else ''))
+    # A chemical brings how to get rid of it: the notebook lists that at the foot of the page it is added to.
+    found += [dict(kind='chemical', code=r['code'], label=f"{r['code']} {r['name']}" + (f" (CAS {r['cas']})" if r['cas'] else ''),
+                   disposal=r.get('disposal') or '')
               for r in list_records(person, 'chemical', q, limit=limit)]
     found += [dict(kind='antibody', code=r['code'], label=f"{r['code']} " + ' '.join(
                    filter(None, [r['short_code'], r['description'] if not r['short_code'] else '',
@@ -504,7 +506,7 @@ def _chemical_fields(data: dict, partial: bool) -> Dict[str, Any]:
             raise ValueError('A chemical needs a name')
     if 'cas' in data or not partial:
         out['cas'] = cas_number(data.get('cas'))
-    for key, limit in (('room', 120), ('size', 60), ('notes', 5000)):
+    for key, limit in (('room', 120), ('size', 60), ('notes', 5000), ('disposal', 2000)):
         if key in data or not partial:
             out[key] = _text(data.get(key), limit)
     if 'status' in data or not partial:
@@ -631,6 +633,12 @@ def create_noting(person: Person, kind: str, data: dict, owner: Optional[str] = 
     lab = _any_lab(data.get('lab')) if any_lab else None
     lab = lab or lab_of(person, data.get('lab'), strict=not any_lab)
     with connect() as conn:
+        if kind == 'chemical' and not fields['disposal'] and fields['cas']:
+            # Another bottle of the same substance in the lab: how to get rid of it is the same.
+            same = conn.execute("SELECT disposal FROM chemicals WHERE lab = ? AND cas = ? AND disposal <> '' "
+                                'AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1', (lab, fields['cas'])).fetchone()
+            if same:
+                fields['disposal'] = same['disposal']
         record_id = secrets.token_hex(12)
         code = _code(conn, kind, lab)
         by = person.username

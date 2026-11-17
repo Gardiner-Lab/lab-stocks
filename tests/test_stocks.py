@@ -237,7 +237,8 @@ def test_chemicals_with_their_cas_number_and_safety_data_sheet(as_user):
     assert records.kind_of('gard-c-0001') == 'chemical'
     # Offered to the notebook's links.
     assert _ok(ana.get('/api/search?q=Ethanol'))['results'] == [
-        {'kind': 'chemical', 'code': 'GARD-C-0001', 'label': 'GARD-C-0001 Ethanol absolute (CAS 64-17-5)'}]
+        {'kind': 'chemical', 'code': 'GARD-C-0001', 'label': 'GARD-C-0001 Ethanol absolute (CAS 64-17-5)',
+             'disposal': ''}]
 
 
 def test_the_page_links_to_the_safety_registers(as_user):
@@ -384,3 +385,62 @@ def test_the_suite_is_offered_the_owner_labs_tab(world, as_user):
     framed = as_user('lead').get('/elab-owners?embed=1')
     assert b'class="tt-bar"' not in framed.data, 'in a dashboard tab the suite provides the bar'
     assert b'modules.js' not in framed.data, 'and the tool switcher'
+
+
+def test_a_chemical_says_how_and_where_to_get_rid_of_it(as_user, world):
+    ana, zoe = as_user('ana'), as_user('zoe')
+    how = 'Halogenated organic waste: the yellow can in the fume hood of O.703. Never down the sink.'
+    made = _ok(ana.post('/api/chemicals', json={'name': 'Chloroform', 'cas': '67-66-3', 'disposal': how}), 201)['record']
+    assert made['disposal'] == how
+    assert _ok(ana.get(f"/api/chemicals/{made['code']}"))['record']['disposal'] == how
+    # Another bottle of the same substance, left empty, takes it; one with its own keeps that.
+    second = _ok(ana.post('/api/chemicals', json={'name': 'Chloroform, 1 L', 'cas': '67-66-3'}), 201)['record']
+    assert second['disposal'] == how
+    own = _ok(ana.post('/api/chemicals', json={'name': 'Chloroform HPLC', 'cas': '67-66-3', 'disposal': 'Return to supplier'}), 201)
+    assert own['record']['disposal'] == 'Return to supplier'
+    # Not from another lab's bottle, nor without a CAS number.
+    assert _ok(zoe.post('/api/chemicals', json={'name': 'Chloroform', 'cas': '67-66-3'}), 201)['record']['disposal'] == ''
+    assert _ok(ana.post('/api/chemicals', json={'name': 'Mystery'}), 201)['record']['disposal'] == ''
+    # Changed like any field; and sent along to the notebook's search.
+    _ok(ana.put(f"/api/chemicals/{made['code']}", json={'disposal': 'Chlorinated waste can, O.703'}))
+    found = {r['code']: r for r in _ok(ana.get('/api/search?q=Chloroform'))['results']}
+    assert found[made['code']]['disposal'] == 'Chlorinated waste can, O.703'
+    assert found[second['code']]['disposal'] == how
+
+
+def test_a_database_from_before_gets_the_disposal_column(world):
+    import sqlite3
+    from app import db
+    conn = sqlite3.connect(db.path())
+    conn.execute('ALTER TABLE chemicals DROP COLUMN disposal')
+    conn.commit()
+    conn.close()
+    db.initialize()
+    conn = sqlite3.connect(db.path())
+    assert 'disposal' in {r[1] for r in conn.execute('PRAGMA table_info(chemicals)')}
+
+
+def test_a_lab_admin_keeps_the_labs_disposal_routes(as_user, world):
+    from test_orders import _lab_admins
+    _lab_admins(world, 'lead')
+    ana, lead, zoe, olga, boss = (as_user(u) for u in ('ana', 'lead', 'zoe', 'olga', 'boss'))
+    assert _ok(ana.get('/api/disposal')) == {'lab': 'Gardiner Lab', 'routes': [], 'can_set': False}
+    # Only the lab's lab admin (or an administrator) changes them.
+    assert ana.put('/api/disposal', json={'routes': ['Sink']}).status_code == 403
+    assert olga.put('/api/disposal', json={'lab': 'Gardiner Lab', 'routes': ['Sink']}).status_code == 400   # not her lab
+    kept = _ok(lead.put('/api/disposal', json={'routes': [
+        '  Halogenated organic   waste: yellow can, O.703 ', '', 'Non-halogenated solvents: white can',
+        'halogenated organic waste: yellow can, O.703']}))
+    assert kept['routes'] == ['Halogenated organic waste: yellow can, O.703', 'Non-halogenated solvents: white can']
+    assert kept['can_set'] is True
+    # The lab sees them on a chemical's form, in that order; another lab does not.
+    assert _ok(ana.get('/api/disposal'))['routes'] == kept['routes']
+    assert _ok(zoe.get('/api/disposal'))['routes'] == []
+    assert zoe.get('/api/disposal?lab=Gardiner Lab').status_code == 400
+    assert _ok(boss.get('/api/disposal?lab=Gardiner Lab'))['can_set'] is True
+    # A chemical keeps the words chosen, whatever happens to the list later.
+    made = _ok(ana.post('/api/chemicals', json={'name': 'DCM', 'disposal': kept['routes'][0]}), 201)['record']
+    _ok(lead.put('/api/disposal', json={'routes': ['Something else']}))
+    assert _ok(ana.get(f"/api/chemicals/{made['code']}"))['record']['disposal'] == kept['routes'][0]
+    assert lead.put('/api/disposal', json={'routes': 'not a list'}).status_code == 400
+    assert lead.put('/api/disposal', json={'routes': ['x' * 301]}).status_code == 400

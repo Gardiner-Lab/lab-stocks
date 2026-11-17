@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request
 
-from app import attachments, chairs, elab, oligo, orders, people, records, shares, sources, viewer
+from app import attachments, chairs, disposal, elab, oligo, orders, people, records, shares, sources, viewer
 from app.db import connect
 
 api = Blueprint('api', __name__)
@@ -54,6 +54,19 @@ def me(person):
                     'directions': records.DIRECTIONS,
                     'orders': {'handles': orders.handles(person), 'waiting': orders.waiting(person),
                                'categories': orders.CATEGORIES, 'status': orders.STATUS}})
+
+
+@api.get('/disposal')
+@signed_in
+def get_disposal(person):
+    """The lab's disposal routes, offered on a chemical's form; can_set for its lab admin."""
+    return jsonify(disposal.routes(person, request.args.get('lab')))
+
+
+@api.put('/disposal')
+@signed_in
+def put_disposal(person):
+    return jsonify(disposal.set_routes(person, _body().get('lab'), _body().get('routes')))
 
 
 @api.get('/lab')

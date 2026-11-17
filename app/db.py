@@ -304,6 +304,17 @@ CREATE TABLE IF NOT EXISTS chair_sharing (
     set_by TEXT,
     set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- A lab's ways of getting rid of chemicals, kept by its lab admin (app/disposal.py).
+CREATE TABLE IF NOT EXISTS disposal_routes (
+    id TEXT PRIMARY KEY,
+    lab TEXT NOT NULL,
+    text TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    updated_by TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_disposal_routes_lab ON disposal_routes(lab);
 """
 
 
@@ -323,6 +334,10 @@ PRIMER_ADDED = ['mod5', 'mod3']
 # Where a tube of plant material came from: 'elab' for one brought over from eLab (never made there
 # again), else ''. Added to databases from before it.
 MATERIAL_ADDED = ['source', 'elab_owner']
+
+
+# How and where to get rid of a chemical (which waste container, which room): added to databases from before it.
+CHEMICAL_ADDED = ['disposal']
 
 
 def set_path(path: str) -> None:
@@ -378,6 +393,10 @@ def initialize(db_path: Optional[str] = None) -> None:
         for column in GLYCEROL_ADDED:
             if column not in have:
                 conn.execute(f"ALTER TABLE glycerol ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        have = {r['name'] for r in conn.execute('PRAGMA table_info(chemicals)')}
+        for column in CHEMICAL_ADDED:
+            if column not in have:
+                conn.execute(f"ALTER TABLE chemicals ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         have = {r['name'] for r in conn.execute('PRAGMA table_info(material)')}
         for column in MATERIAL_ADDED:
             if column not in have:

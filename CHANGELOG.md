@@ -5,6 +5,17 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-20
+
+### Added
+- **Where a stock is, on the Lab Map.** Every kind (glycerol stocks, primers, chemicals, antibodies, plant
+  material) has a **Place on the Lab Map**, chosen from the fridges, freezers and cabinets on the lab's floor plan;
+  a box of tubes goes in one place together. The words of **Kept in** stay, for the box and position.
+- The lists have a **Place** column, which sorts them by map, room and fridge or freezer; a place there, or on a
+  stock's page, opens the map on it.
+- `GET /api/places/<id>`: the stocks kept at a place, that the person asking may see, for the map to list on
+  clicking it. Without a map in the suite (`MAP_URL` empty, or no places), none of this shows.
+
 ## [0.23.0] - 2026-11-17
 
 ### Added

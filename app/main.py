@@ -11,7 +11,7 @@ import os
 
 from flask import Flask, redirect, render_template, request
 
-APP_VERSION = '0.23.0'
+APP_VERSION = '0.24.0'
 SOFOS_URL = ('https://uusofos.itis.software/default.aspx#ViewID=BOInformationPortal_ListView'
              '&ObjectClassName=GROS.Module.ExtensionModules.Intranet.BOInformationPortal')
 CHEMWATCH_URL = 'https://jr.chemwatch.net/chemwatch.web/'
@@ -49,6 +49,8 @@ def create_app() -> Flask:
             'editor': os.environ.get('EDITOR_URL', '/editor').rstrip('/'),
             'notebook': os.environ.get('NOTEBOOK_URL', '/notebook').rstrip('/'),
             'seeds': os.environ.get('SEEDS_URL', '/seeds').rstrip('/'),
+            # The Lab Map: where each stock is, as a place on a floor plan. Empty: no map in this suite.
+            'map': os.environ.get('MAP_URL', '/map').rstrip('/'),
             'logout': os.environ.get('SUITE_LOGOUT_URL', '/account/logout'),
             # Where phones reach the suite, for the codes on labels; unset, the
             # address the label page was opened at.

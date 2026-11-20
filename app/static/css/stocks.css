@@ -290,3 +290,11 @@ body.embedded .owner-labs { padding-top: .4rem; }
 .disposal-field { display: flex; flex-direction: column; gap: .4rem; }
 .disposal-field select { max-width: 100%; }
 .description.disposal { white-space: pre-wrap; }
+
+/* Places on the Lab Map: a link that opens the map on the fridge or freezer, and sorting the lists by it. */
+.place-link { white-space: nowrap; text-decoration: none; }
+.place-link:hover { text-decoration: underline; }
+.place-field { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.place-field select { flex: 1 1 14rem; }
+.th-sort { border: 0; background: none; padding: 0; font: inherit; font-weight: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
+.th-sort:hover { color: var(--tt-green-dark); }

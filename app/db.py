@@ -339,6 +339,10 @@ MATERIAL_ADDED = ['source', 'elab_owner']
 # How and where to get rid of a chemical (which waste container, which room): added to databases from before it.
 CHEMICAL_ADDED = ['disposal']
 
+# Where a stock is on the Lab Map: the id of a place there (a fridge, a freezer, a cabinet), or ''.
+# Every kind has it; added to databases from before the map.
+PLACE_TABLES = ('glycerol', 'primers', 'chemicals', 'antibodies', 'material')
+
 
 def set_path(path: str) -> None:
     global _path
@@ -401,3 +405,7 @@ def initialize(db_path: Optional[str] = None) -> None:
         for column in MATERIAL_ADDED:
             if column not in have:
                 conn.execute(f"ALTER TABLE material ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        for table in PLACE_TABLES:
+            if 'place_id' not in {r['name'] for r in conn.execute(f'PRAGMA table_info({table})')}:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN place_id TEXT NOT NULL DEFAULT ''")
+                conn.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_place ON {table}(place_id)')

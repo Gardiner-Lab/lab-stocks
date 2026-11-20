@@ -240,6 +240,7 @@ const App = {
       this.meta = await api('GET', '/me');
       this.labPicker(this.meta.lab.labs);
       await this.loadLab();
+      await this.loadPlaces();
       this.showWaiting(this.meta.orders.waiting);
     } catch (err) {
       put(document.getElementById('main'), el('p', { class: 'empty' }, err.message));
@@ -683,6 +684,7 @@ const App = {
       // Own and deliberately shared stocks always show; a chair group's other stocks on request.
       put(table, this.listTable(kind, data[PLURAL[kind]].filter((r) => r.mine || r.shared || wide)));
     };
+    this.redrawList = draw;
     let timer;
     query.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
     put(main,
@@ -711,6 +713,75 @@ const App = {
     await draw();
     this.onSelection();
     query.focus();
+  },
+
+  /* the Lab Map ------------------------------------------------------------------------
+   * Where a stock is kept, as a place on the lab's floor plan: a fridge, a freezer, a cabinet. The places
+   * come from the map (the ones this person can see); a stock keeps the place's id. Clicking a place
+   * opens the map on it. Without a map in the suite, none of this shows. */
+
+  places: [],
+  placeById: new Map(),
+
+  async loadPlaces() {
+    if (!ST.map) return;
+    try {
+      const res = await fetch(`${ST.map}/api/places?storage=1`, { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return;
+      this.places = (await res.json()).places || [];
+      this.placeById = new Map(this.places.map((p) => [p.id, p]));
+    } catch (err) { /* no map in this suite */ }
+  },
+
+  hasMap() { return this.places.length > 0; },
+
+  /** A link that opens the map on a stock's place: its name and room, or (long) with the map's name too. */
+  placeLink(id, long = false) {
+    if (!id) return null;
+    const p = this.placeById.get(id);
+    const text = !p ? 'on the map' : long ? `${p.name}${p.room ? `, ${p.room}` : ''} (${p.map})` : [p.name, p.room].filter(Boolean).join(' · ');
+    return el('a', { class: 'place-link', href: `${ST.map}/#place=${encodeURIComponent(id)}`, target: window.top !== window ? '_top' : '_self',
+      title: p ? `Show it on the map: ${p.map}` : 'Show it on the Lab Map', onclick: (e) => e.stopPropagation() }, '📍 ', text);
+  },
+
+  /** Sorting by place: by map, room and name; stocks with no place last. */
+  placeKey(r) {
+    const p = this.placeById.get(r.place_id);
+    return p ? `${p.map}\u0001${p.room}\u0001${p.name}\u0001${p.id}` : '￿';
+  },
+
+  /** The form's place on the map: the map's places by map and room, or none. */
+  placeFields(rec) {
+    if (!this.hasMap() && !rec?.place_id) return [];
+    return [{ name: 'place_id', label: 'Place on the Lab Map', type: 'custom', build: () => {
+      const groups = new Map();
+      for (const p of this.places) {
+        const key = `${p.map} · ${p.room || 'no room'}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(p);
+      }
+      const choice = el('select', { 'aria-label': 'Place on the Lab Map' },
+        el('option', { value: '' }, '— not on the map —'),
+        rec?.place_id && !this.placeById.has(rec.place_id)
+          ? el('option', { value: rec.place_id, selected: true }, '(a place on a map you cannot see)') : null,
+        [...groups].map(([key, list]) => el('optgroup', { label: key },
+          list.map((p) => el('option', { value: p.id, selected: rec?.place_id === p.id }, p.name)))));
+      return { node: el('div', { class: 'place-field' }, choice,
+        el('a', { href: `${ST.map}/`, target: '_blank', rel: 'noopener', class: 'hint' }, 'Open the map ↗')),
+      get: () => ({ place_id: choice.value }) };
+    }, hint: 'The fridge, freezer or cabinet on the lab\'s floor plan: clicking it there lists what is in it.' }];
+  },
+
+  sortByPlace: (() => { try { return localStorage.getItem('stocks.sortByPlace') === '1'; } catch (e) { return false; } })(),
+
+  placeHeader() {
+    return el('button', { class: 'th-sort', type: 'button', title: this.sortByPlace ? 'Back to newest first' : 'Sort by place: map, room, then fridge or freezer',
+      onclick: (e) => {
+        e.stopPropagation();
+        this.sortByPlace = !this.sortByPlace;
+        try { localStorage.setItem('stocks.sortByPlace', this.sortByPlace ? '1' : '0'); } catch (err) { /* no storage */ }
+        this.redrawList?.();
+      } }, 'Place ', this.sortByPlace ? '▲' : '⇅');
   },
 
   pick(code) {
@@ -773,14 +844,14 @@ const App = {
         el('p', { class: 'hint' }, 'New here? ', el('a', { href: url('/help') }, 'How to use Lab Stocks'),
           ' — codes, boxes and places, labels, and the order list.'));
     }
-    const head = {
+    let head = {
       glycerol: ['', 'Code', 'Plasmid', 'Clone', 'Strain', 'Selection', 'Kept in', 'Made', 'Status'],
       primer: ['', 'Code', 'Name', 'Sequence (5′→3′)', 'nt', 'Tm', 'Kept in', 'Status'],
       chemical: ['', 'Code', 'Name', 'CAS number', 'Room', 'Size', 'SDS', 'Out'],
       antibody: ['', 'Code', 'Short code', 'Description', 'Type', 'Producer', 'Source animal', 'Product number', 'Notes about the use', 'Status'],
       material: ['', 'Code', 'Name', 'Tissue', 'Species / plant', 'Collected', 'Experiment', 'Kept in', 'Status'],
     }[kind];
-    const cells = {
+    let cells = {
       glycerol: (r) => [r.plasmid_name, r.clone, r.host, r.selection, r.location, euDate(r.made_on) || localTime(r.created_at).slice(0, 10),
         r.source === 'sequencing' ? `${r.status} ✓` : r.status],
       primer: (r) => [r.name, el('span', { class: 'mono' }, r.mod5 ? el('span', { class: 'mod-tag' }, r.mod5) : null, r.sequence,
@@ -794,6 +865,14 @@ const App = {
         [euDate(r.collected_on), r.collected_by].filter(Boolean).join(' · '), r.experiment,
         r.elab_layer_path ? `${r.elab_layer_path.split(' / ').slice(-2).join(' / ')}${r.elab_position ? ` · ${r.elab_position}` : ''}` : r.location, r.status],
     }[kind];
+    if (this.hasMap()) {
+      head = [...head, this.placeHeader()];
+      const plain = cells;
+      cells = (r) => [...plain(r), this.placeLink(r.place_id) || ''];
+      if (this.sortByPlace) {
+        rows = [...rows].sort((a, b) => this.placeKey(a).localeCompare(this.placeKey(b)) || a.code.localeCompare(b.code, undefined, { numeric: true }));
+      }
+    }
     return this.pickTable(head, rows.map((r) => r.code),
       el('tbody', {}, rows.map((r) => el('tr', { class: `clickable ${r.status !== 'in stock' ? 'faded' : ''}`, onclick: () => { location.hash = `${kind}=${r.code}`; } },
         el('td', { class: 'pick' }, this.pick(r.code)),
@@ -890,6 +969,7 @@ const App = {
       { name: 'host', label: 'Strain', value: rec?.host, list: 'hosts', placeholder: 'e.g. DH5α, GV3101' },
       { name: 'selection', label: 'Selection', value: rec?.selection, placeholder: 'e.g. kanamycin 50 µg/mL' },
       { name: 'location', label: 'Kept in', value: rec?.location, placeholder: 'e.g. −80 °C freezer 1 / box 3 / B4' },
+      ...this.placeFields(rec),
       { name: 'elab_storage', label: 'Storage location (eLab)', type: 'custom', build: () => this.storagePicker(rec) },
       { name: 'made_on', label: 'Made on', type: 'date', value: rec?.made_on || today() },
       { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' },
@@ -981,7 +1061,7 @@ const App = {
         ['Plasmid', plasmidFact],
         ['Sequencing', open ? el('a', { href: `${ST.editor}/sequencing?sequence=${encodeURIComponent(rec.plasmid_id)}`, target: '_blank', rel: 'noopener' },
           rec.source === 'sequencing' ? '✓ confirmed by sequencing: see the reads' : 'see the reads') : null],
-        ['Clone', rec.clone], ['Strain', rec.host], ['Selection', rec.selection], ['Kept in', rec.location],
+        ['Clone', rec.clone], ['Strain', rec.host], ['Selection', rec.selection], ['Kept in', rec.location], ['On the map', this.placeLink(rec.place_id, true)],
         ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
         ['Made on', euDate(rec.made_on)], ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`],
         ['Owner in eLab', rec.elab_owner && rec.elab_owner !== rec.created_by ? rec.elab_owner : null]]),
@@ -1129,6 +1209,7 @@ const App = {
       { name: 'collected_by', label: 'Collected by', value: rec ? rec.collected_by : ST.person.username },
       { name: 'experiment', label: 'Experiment', value: rec?.experiment, placeholder: 'e.g. scent time course, day 3' },
       { name: 'location', label: 'Kept in', value: rec?.location, placeholder: 'e.g. −80 °C freezer 1 / box 3' },
+      ...this.placeFields(rec),
       ...(many ? [] : [{ name: 'elab_storage', label: 'Storage location (eLab)', type: 'custom', build: () => this.storagePicker(rec) },
         { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' }]),
       { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
@@ -1154,7 +1235,7 @@ const App = {
         el('button', { class: 'btn btn-secondary', onclick: () => this.editMaterial(rec) }, '✎ Edit')]),
       this.facts([['Name on the tube', rec.name], ['Tissue', rec.tissue], ['Species', rec.species], ['From plant', rec.from_plant],
         ['Description', rec.description], ['Collected', [euDate(rec.collected_on), rec.collected_by && `by ${rec.collected_by}`].filter(Boolean).join(' ')],
-        ['Experiment', rec.experiment], ['Kept in', rec.location],
+        ['Experiment', rec.experiment], ['Kept in', rec.location], ['On the map', this.placeLink(rec.place_id, true)],
         ['In eLab\'s storage', rec.elab_layer_path ? `${rec.elab_layer_path}${rec.elab_position ? `, place ${rec.elab_position}` : ''}` : null],
         ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`],
         ['Owner in eLab', rec.elab_owner && rec.elab_owner !== rec.created_by ? rec.elab_owner : null]]),
@@ -1415,6 +1496,7 @@ const App = {
         { name: 'ordered_on', label: 'Ordered on', type: 'date', value: rec?.ordered_on },
         { name: 'concentration', label: 'Concentration', value: rec?.concentration, placeholder: 'e.g. 100 µM stock' },
         { name: 'location', label: 'Kept in', value: rec?.location, placeholder: 'e.g. Primer box 2 / C5' },
+        ...this.placeFields(rec),
         { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' },
         { name: 'notes', label: 'Notes', type: 'textarea', value: rec?.notes },
       ],
@@ -1460,7 +1542,7 @@ const App = {
       this.facts([['Length', `${rec.length} nt`], ['GC', `${rec.gc}%`], ['Tm', rec.tm !== null ? `${rec.tm} °C (nearest neighbour, 50 mM Na⁺, 250 nM primer)` : null],
         ['Direction', rec.direction], ['Target', rec.target], ['Purpose', rec.purpose],
         ['5′ modification', rec.mod5], ['3′ modification', rec.mod3], ['Other modifications', rec.modifications],
-        ['Supplier', rec.supplier], ['Ordered on', euDate(rec.ordered_on)], ['Concentration', rec.concentration], ['Kept in', rec.location],
+        ['Supplier', rec.supplier], ['Ordered on', euDate(rec.ordered_on)], ['Concentration', rec.concentration], ['Kept in', rec.location], ['On the map', this.placeLink(rec.place_id, true)],
         ['Status', rec.status], ['Made by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null);
   },
@@ -1526,6 +1608,7 @@ const App = {
         { name: 'name', label: 'Name', value: rec?.name, placeholder: 'e.g. Ethanol absolute, Kanamycin sulfate' },
         { name: 'cas', label: 'CAS number', value: rec?.cas, placeholder: 'e.g. 64-17-5', hint: 'The check digit is checked, to catch typing errors.' },
         { name: 'room', label: 'Room', value: rec?.room, placeholder: 'e.g. Kruyt O.703, flammables cabinet' },
+        ...this.placeFields(rec),
         { name: 'size', label: 'Size', value: rec?.size, placeholder: 'e.g. 500 mL, 25 g' },
         { name: 'status', label: 'Status', type: 'select', options: this.meta.chemical_status, value: rec?.status || 'in stock' },
         { name: 'disposal', label: 'Disposal: how and where', type: 'custom',
@@ -1584,7 +1667,7 @@ const App = {
         rec.status === 'discarded' ? null : this.outToggle(rec),
         el('button', { class: 'btn btn-secondary', onclick: () => this.editChemical(rec) }, '✎ Edit')]),
       this.facts([['Name', rec.name], ['CAS number', rec.cas ? el('span', {}, el('span', { class: 'mono' }, rec.cas), ' ', copyCas) : null],
-        ['Room', rec.room], ['Size', rec.size], ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
+        ['Room', rec.room], ['On the map', this.placeLink(rec.place_id, true)], ['Size', rec.size], ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? el('p', { class: 'description' }, rec.notes) : null,
       this.section('Disposal',
         rec.disposal ? el('p', { class: 'description disposal' }, rec.disposal)
@@ -1613,6 +1696,7 @@ const App = {
         { name: 'producer', label: 'Producer', value: rec?.producer, placeholder: 'e.g. Santa Cruz, Abcam, Agrisera' },
         { name: 'host', label: 'Source animal', value: rec?.host, placeholder: 'e.g. mouse, rabbit, goat' },
         { name: 'product_number', label: 'Product number', value: rec?.product_number, placeholder: 'e.g. sc-9996' },
+        ...this.placeFields(rec),
         { name: 'notes', label: 'Notes about the use', type: 'textarea', value: rec?.notes,
           placeholder: 'e.g. 1:5000 in 5% milk TBS-T for western blots; 1:200 for immunostaining' },
         { name: 'status', label: 'Status', type: 'select', options: this.meta.status, value: rec?.status || 'in stock' },
@@ -1632,6 +1716,7 @@ const App = {
           el('button', { class: 'btn btn-secondary', onclick: () => this.editAntibody(rec) }, '✎ Edit')]),
       this.facts([['Short code in lab', rec.short_code], ['Description', rec.description], ['Primary / secondary / other', kindLabel],
         ['Producer', rec.producer], ['Source animal', rec.host], ['Product number', rec.product_number ? el('span', { class: 'mono' }, rec.product_number) : null],
+        ['On the map', this.placeLink(rec.place_id, true)],
         ['Status', rec.status], ['Added by', `${rec.created_by || '—'} · ${localTime(rec.created_at)}`]]),
       rec.notes ? this.section('Notes about the use', el('p', { class: 'description' }, rec.notes)) : null);
   },

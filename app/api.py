@@ -87,6 +87,13 @@ def search(person):
     return jsonify({'results': records.search(person, request.args.get('q', ''))})
 
 
+@api.get('/places/<place_id>')
+@signed_in
+def at_place(person, place_id):
+    """The stocks kept at a place on the Lab Map (its id there): the map shows them on clicking it."""
+    return jsonify({'records': records.at_place(person, place_id)})
+
+
 @api.get('/primers/sequences')
 @signed_in
 def primer_sequences(person):

@@ -399,25 +399,52 @@ def list_records(person: Person, kind: str, q: str = '', plasmid: str = '', limi
     return [_out(kind, r, person) for r in rows if can_see(person, r, kind)][:limit]
 
 
+def label(kind: str, r) -> str:
+    """A stock in a line: its code and what it is, as other tools list it."""
+    if kind == 'glycerol':
+        return f"{r['code']} {r['plasmid_name']}" + (f" clone {r['clone']}" if r['clone'] else '')
+    if kind == 'primer':
+        return f"{r['code']} {r['name']}"
+    if kind == 'chemical':
+        return f"{r['code']} {r['name']}" + (f" (CAS {r['cas']})" if r['cas'] else '')
+    if kind == 'antibody':
+        return f"{r['code']} " + ' '.join(filter(None, [r['short_code'], r['description'] if not r['short_code'] else '',
+                                                    f"({', '.join(filter(None, [r['type'], r['host']]))})"]))
+    detail = ', '.join(filter(None, [r['tissue'], r['species'] or r['from_plant']]))
+    return f"{r['code']} {r['name']}" + (f' ({detail})' if detail else '')
+
+
 def search(person: Person, q: str, limit: int = 20) -> List[dict]:
     """Glycerol stocks, primers, chemicals and antibodies by code or name, for links from elsewhere (the notebook)."""
     q = (q or '').strip()
-    found = [dict(kind='glycerol', code=r['code'], label=f"{r['code']} {r['plasmid_name']}"
-                  + (f" clone {r['clone']}" if r['clone'] else '')) for r in list_records(person, 'glycerol', q, limit=limit)]
-    found += [dict(kind='primer', code=r['code'], label=f"{r['code']} {r['name']}") for r in list_records(person, 'primer', q, limit=limit)]
-    # A chemical brings how to get rid of it: the notebook lists that at the foot of the page it is added to.
-    found += [dict(kind='chemical', code=r['code'], label=f"{r['code']} {r['name']}" + (f" (CAS {r['cas']})" if r['cas'] else ''),
-                   disposal=r.get('disposal') or '')
-              for r in list_records(person, 'chemical', q, limit=limit)]
-    found += [dict(kind='antibody', code=r['code'], label=f"{r['code']} " + ' '.join(
-                   filter(None, [r['short_code'], r['description'] if not r['short_code'] else '',
-                                 f"({', '.join(filter(None, [r['type'], r['host']]))})"])))
-              for r in list_records(person, 'antibody', q, limit=limit)]
-    found += [dict(kind='material', code=r['code'], label=f"{r['code']} {r['name']}"
-                   + (f" ({', '.join(filter(None, [r['tissue'], r['species'] or r['from_plant']]))})" if r['tissue'] or r['species'] or r['from_plant'] else ''))
-              for r in list_records(person, 'material', q, limit=limit)]
+    found = []
+    for kind in ('glycerol', 'primer', 'chemical', 'antibody', 'material'):
+        for r in list_records(person, kind, q, limit=limit):
+            item = dict(kind=kind, code=r['code'], label=label(kind, r))
+            if kind == 'chemical':
+                # A chemical brings how to get rid of it: the notebook lists that at the foot of the page it is added to.
+                item['disposal'] = r.get('disposal') or ''
+            found.append(item)
     exact = [f for f in found if f['code'].upper() == q.upper()]
     return (exact + [f for f in found if f not in exact])[:limit]
+
+
+def at_place(person: Person, place_id: str) -> List[dict]:
+    """
+    The stocks kept at a place on the Lab Map, of every kind, that this person may see: what the map
+    shows on clicking a freezer. Discarded and used-up ones too, marked so by their status.
+    """
+    place_id = _text(place_id, 40)
+    if not PLACE_ID.match(place_id):
+        return []
+    out = []
+    with connect() as conn:
+        for kind, table in TABLE.items():
+            rows = conn.execute(f'SELECT * FROM {table} WHERE place_id = ? AND deleted_at IS NULL ORDER BY code',
+                                (place_id,)).fetchall()
+            out += [{'kind': kind, 'code': r['code'], 'label': label(kind, r), 'status': r['status'], 'lab': r['lab']}
+                    for r in rows if can_see(person, r, kind)]
+    return out
 
 
 # --- changing --------------------------------------------------------------------
@@ -566,8 +593,25 @@ def _material_fields(data: dict, partial: bool) -> Dict[str, Any]:
     return out
 
 
-FIELDS = {'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _chemical_fields,
-          'antibody': _antibody_fields, 'material': _material_fields}
+PLACE_ID = re.compile(r'^[0-9a-f]{6,40}$')
+
+
+def _with_place(fields):
+    """Every kind's fields, and its place on the Lab Map: a place's id there, chosen from the map's list, or ''."""
+    def checked(data: dict, partial: bool) -> Dict[str, Any]:
+        out = fields(data, partial)
+        if 'place_id' in data or not partial:
+            v = _text(data.get('place_id'), 40)
+            if v and not PLACE_ID.match(v):
+                raise ValueError("Choose the place from the Lab Map's list")
+            out['place_id'] = v
+        return out
+    return checked
+
+
+FIELDS = {kind: _with_place(fn) for kind, fn in {
+    'glycerol': _glycerol_fields, 'primer': _primer_fields, 'chemical': _chemical_fields,
+    'antibody': _antibody_fields, 'material': _material_fields}.items()}
 
 
 MANY = 500                  # plant material made at once, at most: a few boxes of tubes
@@ -587,7 +631,7 @@ def create_material(person: Person, items: List[dict], shared: dict, lab: Option
     if len(items) > MANY:
         raise ValueError(f'At most {MANY} tubes at once')
     lab = lab_of(person, lab, strict=True)
-    rows = [_material_fields({**(shared or {}), **i}, partial=False) for i in items]
+    rows = [FIELDS['material']({**(shared or {}), **i}, partial=False) for i in items]
     made = []
     with connect() as conn:
         for n, fields in enumerate(rows):

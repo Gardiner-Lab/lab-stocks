@@ -735,28 +735,43 @@ const App = {
 
   hasMap() { return this.places.length > 0; },
 
-  /** A link that opens the map on a stock's place: its name and room, or (long) with the map's name too. */
+  /**
+   * The way down to a place, as the map nests them: the floor it is on, then each thing it is
+   * inside. "Second floor › −80 °C freezer 1 › Tower 3". Older maps have no nesting and give
+   * just the floor plan's name.
+   */
+  placeTrail(p) {
+    return [p.floor || p.map, ...(p.path || [])].filter(Boolean).join(' › ');
+  },
+
+  /**
+   * A link that opens the map on a stock's place — the deepest one it is in, a box rather than the
+   * freezer round it — so someone who does not know where that is can follow the way back out.
+   */
   placeLink(id, long = false) {
     if (!id) return null;
     const p = this.placeById.get(id);
-    const text = !p ? 'on the map' : long ? `${p.name}${p.room ? `, ${p.room}` : ''} (${p.map})` : [p.name, p.room].filter(Boolean).join(' · ');
+    const trail = p ? this.placeTrail(p) : '';
+    const text = !p ? 'on the map' : long ? `${p.name} (${trail})` : [p.name, p.room].filter(Boolean).join(' · ');
     return el('a', { class: 'place-link', href: `${ST.map}/#place=${encodeURIComponent(id)}`, target: window.top !== window ? '_top' : '_self',
-      title: p ? `Show it on the map: ${p.map}` : 'Show it on the Lab Map', onclick: (e) => e.stopPropagation() }, '📍 ', text);
+      title: p ? `Show it on the map: ${trail} › ${p.name}` : 'Show it on the Lab Map', onclick: (e) => e.stopPropagation() }, '📍 ', text);
   },
 
-  /** Sorting by place: by map, room and name; stocks with no place last. */
+  /** Sorting by place: down the way to it, then by name; stocks with no place last. */
   placeKey(r) {
     const p = this.placeById.get(r.place_id);
-    return p ? `${p.map}\u0001${p.room}\u0001${p.name}\u0001${p.id}` : '￿';
+    return p ? `${this.placeTrail(p)}\u0001${p.room}\u0001${p.name}\u0001${p.id}` : '￿';
   },
 
   /** The form's place on the map: the map's places by map and room, or none. */
   placeFields(rec) {
     if (!this.hasMap() && !rec?.place_id) return [];
     return [{ name: 'place_id', label: 'Place on the Lab Map', type: 'custom', build: () => {
+      // Grouped by the way down to them, so "Box 3" in one tower is not confused with
+      // "Box 3" in the next: each group is named for the thing they are all inside.
       const groups = new Map();
       for (const p of this.places) {
-        const key = `${p.map} · ${p.room || 'no room'}`;
+        const key = (p.path || []).length ? this.placeTrail(p) : `${p.map} · ${p.room || 'no room'}`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(p);
       }
@@ -769,7 +784,8 @@ const App = {
       return { node: el('div', { class: 'place-field' }, choice,
         el('a', { href: `${ST.map}/`, target: '_blank', rel: 'noopener', class: 'hint' }, 'Open the map ↗')),
       get: () => ({ place_id: choice.value }) };
-    }, hint: 'The fridge, freezer or cabinet on the lab\'s floor plan: clicking it there lists what is in it.' }];
+    }, hint: 'Where this is kept on the lab\'s map. Choose the smallest thing that holds it — the box or '
+             + 'tower inside the freezer, not just the freezer — and the link opens the map right there.' }];
   },
 
   sortByPlace: (() => { try { return localStorage.getItem('stocks.sortByPlace') === '1'; } catch (e) { return false; } })(),

@@ -5,6 +5,17 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-21
+
+### Changed
+- **A stock's place points at the smallest thing that holds it.** Lab Map can now map the inside of a
+  freezer or a shelving unit — its towers, racks, shelves and boxes — and those are offered in
+  <b>Place on the Lab Map</b> like any other. Because several towers each have a "Box 3", the picker now
+  groups places by the way down to them (<i>Second floor › −80 °C freezer 1 › Tower 3</i>) rather than by
+  the map alone, and the 📍 link says the same on hover. Clicking it opens the map on that box, and the
+  line above the map leads back out through the tower and the freezer to the floor — so someone who has
+  never opened that freezer can still find the tube. Sorting by place follows the same order.
+
 ## [0.24.0] - 2026-11-20
 
 ### Added

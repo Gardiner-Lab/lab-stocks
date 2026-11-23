@@ -22,7 +22,7 @@ from app import records, viewer
 from app.db import connect
 from app.people import Person
 
-MAX_BYTES = 25 * 1024 * 1024
+MAX_BYTES = 50 * 1024 * 1024
 INLINE_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'}
 PREVIEW_TYPES = {'application/pdf'}
 RISKY = ('text/html', 'application/xhtml', 'image/svg', 'text/xml', 'application/xml',

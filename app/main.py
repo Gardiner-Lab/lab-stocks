@@ -11,7 +11,7 @@ import os
 
 from flask import Flask, redirect, render_template, request
 
-APP_VERSION = '0.25.0'
+APP_VERSION = '0.26.0'
 SOFOS_URL = ('https://uusofos.itis.software/default.aspx#ViewID=BOInformationPortal_ListView'
              '&ObjectClassName=GROS.Module.ExtensionModules.Intranet.BOInformationPortal')
 CHEMWATCH_URL = 'https://jr.chemwatch.net/chemwatch.web/'
@@ -37,7 +37,7 @@ def create_app() -> Flask:
     from app.api import api
 
     app = Flask(__name__)
-    app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
+    app.config['MAX_CONTENT_LENGTH'] = 128 * 1024 * 1024
     db.initialize(os.environ.get('STOCKS_DATABASE_PATH', '/stocks/stocks.db'))
     app.register_blueprint(api, url_prefix='/api')
     # Copies the stocks to eLabJournal's inventory, when ELAB_URL and ELAB_TOKEN are set.
